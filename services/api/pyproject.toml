@@ -1,0 +1,29 @@
+[project]
+name = "yogya-api"
+version = "0.1.0"
+description = "YOGYA FastAPI backend"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi",
+  "uvicorn[standard]",
+  "pydantic>=2",
+  "pydantic-settings",
+  "psycopg[binary]",
+  "httpx",
+  "PyJWT[crypto]>=2.8",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+# Commands (run from services/api with the venv active):
+#   install : pip install -r requirements.txt
+#   run     : uvicorn app.main:app --reload            (http://127.0.0.1:8000)
+#   test    : python -m pytest -q
+#   migrate : python scripts/apply_migrations.py --confirm-target
+# The migrate command writes to the database in DATABASE_URL. Run it only
+# against a database you have confirmed is a test project.

@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yogya.invalid/schemas/eligibility-rule.schema.json",
+  "title": "YOGYA eligibility rule v1",
+  "description": "Draft v1 format for YOGYA deterministic eligibility rules. Defines structure only: a rule is a tree of AND/OR groups, criteria and conditionals. Each criterion evaluates to PASS, FAIL or UNKNOWN. No real scholarship rules are included in this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format_version", "academic_year", "root"],
+  "properties": {
+    "format_version": {
+      "const": 1
+    },
+    "academic_year": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}$"
+    },
+    "root": {
+      "$ref": "#/$defs/node"
+    }
+  },
+  "$defs": {
+    "node": {
+      "description": "Any rule node: a group, a criterion or a conditional.",
+      "oneOf": [
+        { "$ref": "#/$defs/group" },
+        { "$ref": "#/$defs/criterion" },
+        { "$ref": "#/$defs/conditional" }
+      ]
+    },
+    "group": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "group" },
+        "operator": { "enum": ["AND", "OR"] },
+        "children": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/node" }
+        }
+      },
+      "required": ["type", "operator", "children"],
+      "additionalProperties": false
+    },
+    "criterion": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "criterion" },
+        "attribute": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "operator": {
+          "enum": ["eq", "neq", "lt", "lte", "gt", "gte", "in", "not_in", "between", "is_set"]
+        },
+        "value": {
+          "description": "Shape depends on operator; see allOf."
+        },
+        "academic_year": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}$"
+        },
+        "source_reference": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "unknown_policy": { "const": "UNKNOWN" }
+      },
+      "required": ["type", "attribute", "operator", "academic_year", "source_reference", "unknown_policy"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "required": ["operator"],
+            "properties": { "operator": { "enum": ["eq", "neq", "lt", "lte", "gt", "gte"] } }
+          },
+          "then": {
+            "required": ["value"],
+            "properties": {
+              "value": { "type": ["number", "string"] }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["operator"],
+            "properties": { "operator": { "enum": ["in", "not_in"] } }
+          },
+          "then": {
+            "required": ["value"],
+            "properties": {
+              "value": { "type": "array", "minItems": 1 }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["operator"],
+            "properties": { "operator": { "const": "between" } }
+          },
+          "then": {
+            "required": ["value"],
+            "properties": {
+              "value": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": { "type": "number" }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["operator"],
+            "properties": { "operator": { "const": "is_set" } }
+          },
+          "then": {
+            "not": { "required": ["value"] }
+          }
+        }
+      ]
+    },
+    "conditional": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "conditional" },
+        "if": { "$ref": "#/$defs/node" },
+        "then": { "$ref": "#/$defs/node" }
+      },
+      "required": ["type", "if", "then"],
+      "additionalProperties": false
+    }
+  }
+}

@@ -14,18 +14,19 @@ const LOAD_FAILED = "Could not load the scheme list. Please try again later.";
 const PAGE_SIZE = 100;
 const LIST_PATH = `/api/admin/schemes?limit=${PAGE_SIZE}&offset=0`;
 
-/** Groups schemes by their backend status, keeping the order the backend returned them in. */
-function groupByStatus(items: AdminScheme[]): Map<string, AdminScheme[]> {
+/** Presents the detailed backend lifecycle as two clear admin-facing phases. */
+function groupByPhase(items: AdminScheme[]): Map<"draft" | "published", AdminScheme[]> {
   const groups = new Map<string, AdminScheme[]>();
   for (const item of items) {
-    const group = groups.get(item.status);
+    const phase = item.status === "published" ? "published" : "draft";
+    const group = groups.get(phase);
     if (group) {
       group.push(item);
     } else {
-      groups.set(item.status, [item]);
+      groups.set(phase, [item]);
     }
   }
-  return groups;
+  return groups as Map<"draft" | "published", AdminScheme[]>;
 }
 
 export default function AdminOverview() {
@@ -53,14 +54,17 @@ export default function AdminOverview() {
     );
   }
 
-  const statuses = ["draft", "in_review", "verified", "published", "retired"];
-  const counts = new Map(statuses.map((status) => [status, data.items.filter((item) => item.status === status).length]));
+  const statuses = ["draft", "published"] as const;
+  const counts = new Map([
+    ["draft", data.items.filter((item) => item.status !== "published").length],
+    ["published", data.items.filter((item) => item.status === "published").length],
+  ]);
   const normalisedQuery = query.trim().toLowerCase();
   const filtered = data.items.filter((item) =>
-    (statusFilter === "all" || item.status === statusFilter) &&
+    (statusFilter === "all" || (statusFilter === "published" ? item.status === "published" : item.status !== "published")) &&
     (normalisedQuery.length === 0 || `${item.name} ${item.slug} ${item.issuing_body ?? ""}`.toLowerCase().includes(normalisedQuery)),
   );
-  const groups = groupByStatus(filtered);
+  const groups = groupByPhase(filtered);
   return (
     <div className="space-y-6">
       <section aria-label="Scheme counts" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
@@ -98,7 +102,10 @@ export default function AdminOverview() {
       ) : null}
       {filtered.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-slate-600">No schemes match these filters.</p>
-      ) : Array.from(groups.entries()).map(([status, schemes]) => (
+      ) : statuses
+        .map((status) => [status, groups.get(status)] as const)
+        .filter((entry): entry is readonly ["draft" | "published", AdminScheme[]] => Boolean(entry[1]))
+        .map(([status, schemes]) => (
         <section key={status} aria-labelledby={`group-${status}`} className="space-y-3">
           <h2 id={`group-${status}`} className="text-lg font-semibold text-slate-900">
             {schemeStatusLabel(status)} ({schemes.length})
@@ -106,21 +113,21 @@ export default function AdminOverview() {
           <ul className="space-y-3">
             {schemes.map((scheme) => (
               <li key={scheme.id}>
-                <Card className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <Link
+                  href={`/admin/schemes/${scheme.id}`}
+                  aria-label={`Open ${scheme.name}`}
+                  className="group block rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2"
+                >
+                <Card className="flex flex-col gap-2 p-4 transition group-hover:border-teal-300 group-hover:shadow-md sm:flex-row sm:items-center sm:justify-between">
                   <div className="space-y-1">
-                    <p className="font-medium text-slate-900">{scheme.name}</p>
+                    <p className="font-medium text-slate-900 transition group-hover:text-teal-800">{scheme.name}</p>
                     <p className="text-sm text-slate-600">
                       {scheme.slug}
                       {scheme.issuing_body ? ` · ${scheme.issuing_body}` : ""}
                     </p>
                   </div>
-                  <Link
-                    href={`/admin/schemes/${scheme.id}`}
-                    className="text-sm font-medium text-accent-blue underline"
-                  >
-                    Open {scheme.name}
-                  </Link>
                 </Card>
+                </Link>
               </li>
             ))}
           </ul>

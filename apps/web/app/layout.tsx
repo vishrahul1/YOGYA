@@ -6,6 +6,10 @@ import { AuthProvider } from "@/lib/auth/session";
 
 export const metadata: Metadata = {
   title: "YOGYA",
+  description: "Find and understand verified government scholarships.",
+  icons: {
+    icon: "/icon.svg",
+  },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

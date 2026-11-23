@@ -1,8 +1,8 @@
 """Admin scheme catalogue routes: create, list, detail, patch.
 
 Admin only. Create always inserts status 'draft'. Patch never changes status.
-This module does not publish, does not write scheme_versions, and does not
-verify sources.
+Create writes the scheme and its single internal scholarship record in one
+transaction. This module does not publish or verify sources.
 """
 
 from __future__ import annotations
@@ -58,6 +58,7 @@ def _item(row: tuple[Any, ...]) -> dict[str, Any]:
 @router.post("/api/admin/schemes", status_code=status.HTTP_201_CREATED)
 def create_scheme(body: SchemeCreateRequest, ctx: AdminUser) -> dict[str, Any]:
     scheme_id = uuid.uuid4()
+    record_id = uuid.uuid4()
     try:
         with get_connection() as conn, conn.cursor() as cur:
             cur.execute(
@@ -69,6 +70,14 @@ def create_scheme(body: SchemeCreateRequest, ctx: AdminUser) -> dict[str, Any]:
                 (scheme_id, body.slug, body.name, body.issuing_body),
             )
             row = cur.fetchone()
+            cur.execute(
+                """
+                INSERT INTO scheme_versions
+                    (id, scheme_id, version_number, academic_year, status, created_at, updated_at)
+                VALUES (%s, %s, 1, %s, 'draft', now(), now())
+                """,
+                (record_id, scheme_id, body.academic_year),
+            )
             cur.execute(
                 """
                 INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, details)
@@ -84,7 +93,9 @@ def create_scheme(body: SchemeCreateRequest, ctx: AdminUser) -> dict[str, Any]:
             )
     except UniqueViolation:
         raise HTTPException(status_code=409, detail="Scheme slug already exists")
-    return _item(row)
+    result = _item(row)
+    result["scheme_record_id"] = str(record_id)
+    return result
 
 
 def _slugify(text: str) -> str:

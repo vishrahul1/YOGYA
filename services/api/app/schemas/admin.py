@@ -15,6 +15,7 @@ class SchemeCreateRequest(BaseModel):
     slug: str = Field(min_length=1, max_length=100, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
     name: str = Field(min_length=1, max_length=200)
     issuing_body: str | None = Field(None, max_length=200)
+    academic_year: str = Field(pattern=r"^[0-9]{4}-[0-9]{2}$")
 
 
 class ImportUrlRequest(BaseModel):

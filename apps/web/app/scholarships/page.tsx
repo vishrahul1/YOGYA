@@ -60,16 +60,14 @@ export default async function ScholarshipsPage({ searchParams }: ScholarshipsPag
 
   return (
     <section className="w-full space-y-8 pb-8">
-      <header className="relative isolate overflow-hidden rounded-3xl bg-gradient-to-br from-teal-800 via-teal-700 to-slate-900 px-6 py-10 text-white sm:px-10 sm:py-12">
-        <div aria-hidden="true" className="absolute -right-16 -top-20 h-64 w-64 rounded-full bg-white/10 blur-3xl" />
-        <div className="relative max-w-3xl">
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-teal-100">Scholarship catalogue</p>
-          <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Find opportunities for your education</h1>
-          <p className="mt-4 max-w-2xl leading-7 text-teal-50/90">
-            Explore published government scholarship schemes, compare key details, and follow their
-            official sources when you are ready to apply.
-          </p>
-        </div>
+      <header className="max-w-3xl space-y-2">
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+          Scholarships
+        </h1>
+        <p className="leading-7 text-slate-600">
+          Explore published government scholarship schemes, compare key details, and follow their
+          official sources when you are ready to apply.
+        </p>
       </header>
 
       <form

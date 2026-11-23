@@ -1,5 +1,28 @@
 # Current Task
 
+## Status update - Vercel Next.js output
+
+- Fixed the Vercel frontend build output mismatch: Vercel production builds now use the standard `.next` directory expected by its Next.js builder, while local production builds continue using `.next-build` to avoid overwriting an active development server's cache.
+
+## Status update - Guest header navigation
+
+- Replaced the public/guest desktop sidebar with a responsive top header containing Home, Scholarships, and Login.
+- Preserved the authenticated Student and Admin workspace sidebars and the compact mobile menu.
+- Fixed the initial-login transition so the login page follows the shared resolved session and role instead of making a competing role request that could leave the form visible beside the authenticated sidebar.
+- Prevented tab-focus auth events from reloading the shell or repeating `/api/me`; successful login now also leaves `/login` immediately while role guards preserve the correct Student/Admin destination.
+- Standardized the student scholarship page heading, highlighted the sidebar logout action, and made the full assistant workspace fill the viewport with an independently scrolling conversation area.
+- Added a five-second timeout to backend PostgreSQL connections so authenticated API requests fail promptly when the Supabase pooler is unreachable instead of remaining pending indefinitely.
+- Simplified the admin dashboard header, placed Add scholarship on the right, kept status cards before a draft-first scheme list, made scheme rows fully clickable, and aligned Back actions to the right of admin page headings.
+- Reduced the admin-facing scheme lifecycle to two visible phases (Draft and Published) while retaining required internal verification checks, removed the redundant Open label from clickable scheme cards, and added a clear two-step workflow UI to the scheme workspace.
+- Redesigned the admin scheme workspace with a compact header, clearer action hierarchy, collapsed required-content panels, and modal dialogs for metadata editing, academic-year creation, and verification history.
+- Replaced the boxed admin scheme workspace with a flat editorial layout using whitespace, dividers, a linear two-step progress treatment, and restrained action emphasis.
+- Removed multi-version scheme creation from the frontend and backend. Scholarship creation now creates its single internal workflow record transactionally, the admin workspace reads one record, and migration 0010 enforces one record per scheme.
+- Removed Add scholarship from the Admin sidebar so creation starts from the dashboard, and refined the creation page with a compact flat header, clearer required fields, and a two-phase publishing explanation.
+- Added an idempotent 2026-27 catalogue seed for the 15 user-supplied schemes. It creates draft-only single-record scholarships, unverified official sources, and document checklists; it deliberately creates no eligibility rules, deadlines, or published records.
+- Added a guarded, atomic publication seed for the same 15 schemes after the user confirmed verification. It requires an explicit verifying Admin email, records verification/publication timestamps, updates sources and workflow state, and writes history plus audit entries.
+- Fixed the public scholarship catalogue remaining empty after publication by disabling stale Next.js fetch caching in the shared API client. The live API and rendered `/scholarships` page now both return the published catalogue.
+- Added a branded YOGYA browser-tab icon and root metadata so the application no longer displays the generic tab icon.
+
 Phase: Step 2 — architecture and database foundation
 
 ## Done (files written, NOT executed)

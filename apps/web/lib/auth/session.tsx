@@ -7,6 +7,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import type { ReactNode } from "react";
@@ -53,6 +54,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [role, setRole] = useState<AppRole | null>(null);
   const [loading, setLoading] = useState(true);
+  const resolvedTokenRef = useRef<string | null>(null);
+  const resolvingTokenRef = useRef<string | null>(null);
 
   useEffect(() => {
     const supabase = getSupabaseClient();
@@ -61,18 +64,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async function resolveRole(next: Session | null): Promise<void> {
       if (!next) {
         if (active) {
+          resolvedTokenRef.current = null;
+          resolvingTokenRef.current = null;
           setRole(null);
           setLoading(false);
         }
         return;
       }
+
+      const token = next.access_token;
+      if (resolvedTokenRef.current === token || resolvingTokenRef.current === token) {
+        return;
+      }
+
+      resolvingTokenRef.current = token;
       try {
-        const me = await apiRequest<ApiMe>("/api/me", { token: next.access_token });
+        const me = await apiRequest<ApiMe>("/api/me", { token });
         if (active) setRole(normaliseRole(me.role));
       } catch {
         if (active) setRole(null);
       } finally {
-        if (active) setLoading(false);
+        if (active && resolvingTokenRef.current === token) {
+          resolvedTokenRef.current = token;
+          resolvingTokenRef.current = null;
+          setLoading(false);
+        }
       }
     }
 
@@ -89,8 +105,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: subscription } = supabase.auth.onAuthStateChange((_event, next) => {
       if (!active) return;
       setSession(next);
+
+      if (next?.access_token === resolvedTokenRef.current) {
+        return;
+      }
+
       setLoading(true);
-      void resolveRole(next);
+      // Supabase invokes this callback while holding its internal auth lock.
+      // Resolve application data after the callback returns.
+      window.setTimeout(() => {
+        if (active) void resolveRole(next);
+      }, 0);
     });
 
     return () => {

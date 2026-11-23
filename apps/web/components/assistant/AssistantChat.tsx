@@ -301,7 +301,7 @@ export default function AssistantChat({ schemeVersionId, compact = false }: Assi
   }
 
   return (
-    <section className={`relative flex w-full flex-col ${compact ? "h-full min-h-0" : "min-h-[calc(100vh-6rem)]"}`}>
+    <section className="relative flex h-full min-h-0 w-full flex-col">
       <header className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-4 sm:gap-3">
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-teal-700 font-bold text-white shadow-sm">
           Y
@@ -357,7 +357,7 @@ export default function AssistantChat({ schemeVersionId, compact = false }: Assi
         </>
       ) : null}
 
-      <div className={`flex-1 py-4 ${compact ? "min-h-0 overflow-y-auto px-1" : "w-full"}`}>
+      <div className={`min-h-0 flex-1 overflow-y-auto py-4 ${compact ? "px-1" : "w-full"}`}>
         <ol aria-label="Conversation" aria-live="polite" className="space-y-6">
           <li className="flex items-start gap-3">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-teal-700 text-xs font-bold text-white">Y</span>

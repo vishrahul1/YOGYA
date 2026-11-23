@@ -20,7 +20,6 @@ import uuid
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from psycopg.errors import UniqueViolation
 from psycopg.types.json import Jsonb
 
 from app.auth import AuthContext, require_admin
@@ -30,7 +29,6 @@ from app.schemas.admin_verification import (
     ReasonRequest,
     RequiredDocumentCreate,
     SourceCreateRequest,
-    VersionCreateRequest,
     VersionContentUpdate,
 )
 from app.eligibility.adapter import adapt_rule_document
@@ -319,9 +317,9 @@ def delete_eligibility_rule(version_id: uuid.UUID, rule_id: uuid.UUID, ctx: Admi
     return {"deleted": True}
 
 
-@router.get("/api/admin/schemes/{scheme_id}/versions")
-def list_scheme_versions(scheme_id: uuid.UUID, ctx: AdminUser) -> dict[str, Any]:
-    """Return every persisted version for an admin scheme workspace."""
+@router.get("/api/admin/schemes/{scheme_id}/record")
+def get_scheme_record(scheme_id: uuid.UUID, ctx: AdminUser) -> dict[str, Any]:
+    """Return the scheme's single persisted workflow record."""
     with get_connection() as conn, conn.cursor() as cur:
         cur.execute("SELECT 1 FROM schemes WHERE id = %s", (scheme_id,))
         if cur.fetchone() is None:
@@ -331,12 +329,14 @@ def list_scheme_versions(scheme_id: uuid.UUID, ctx: AdminUser) -> dict[str, Any]
             SELECT {_VERSION_RETURNING}
               FROM scheme_versions
              WHERE scheme_id = %s
-             ORDER BY version_number DESC, created_at DESC
+             LIMIT 1
             """,
             (scheme_id,),
         )
-        rows = cur.fetchall()
-    return {"items": [_version_item(row) for row in rows]}
+        row = cur.fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Scholarship record not found")
+    return _version_item(row)
 
 
 @router.get("/api/admin/schemes/{scheme_id}/sources")
@@ -357,70 +357,6 @@ def list_scheme_sources(scheme_id: uuid.UUID, ctx: AdminUser) -> dict[str, Any]:
         )
         rows = cur.fetchall()
     return {"items": [_source_item(row) for row in rows]}
-
-
-@router.post(
-    "/api/admin/schemes/{scheme_id}/versions",
-    status_code=status.HTTP_201_CREATED,
-)
-def create_scheme_version(
-    scheme_id: uuid.UUID, body: VersionCreateRequest, ctx: AdminUser
-) -> dict[str, Any]:
-    version_id = uuid.uuid4()
-    try:
-        with get_connection() as conn, conn.cursor() as cur:
-            # Lock the parent scheme so concurrent creates cannot pick the same number.
-            cur.execute("SELECT id FROM schemes WHERE id = %s FOR UPDATE", (scheme_id,))
-            if cur.fetchone() is None:
-                raise HTTPException(status_code=404, detail="Scheme not found")
-
-            cur.execute(
-                """
-                SELECT 1
-                  FROM scheme_versions
-                 WHERE scheme_id = %s
-                   AND academic_year = %s
-                   AND status <> 'retired'
-                """,
-                (scheme_id, body.academic_year),
-            )
-            if cur.fetchone() is not None:
-                raise HTTPException(
-                    status_code=409,
-                    detail="A non-retired version for this academic year already exists",
-                )
-
-            cur.execute(
-                "SELECT COALESCE(MAX(version_number), 0) + 1 FROM scheme_versions WHERE scheme_id = %s",
-                (scheme_id,),
-            )
-            next_number = cur.fetchone()[0]
-
-            cur.execute(
-                f"""
-                INSERT INTO scheme_versions
-                    (id, scheme_id, version_number, academic_year, status, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, 'draft', now(), now())
-                RETURNING {_VERSION_RETURNING}
-                """,
-                (version_id, scheme_id, next_number, body.academic_year),
-            )
-            row = cur.fetchone()
-            _audit(
-                cur,
-                ctx,
-                "scheme_version.created",
-                "scheme_version",
-                version_id,
-                {
-                    "scheme_id": str(scheme_id),
-                    "version_number": next_number,
-                    "academic_year": body.academic_year,
-                },
-            )
-    except UniqueViolation:
-        raise HTTPException(status_code=409, detail="Scheme version already exists")
-    return _version_item(row)
 
 
 @router.post(

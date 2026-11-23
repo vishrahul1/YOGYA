@@ -52,6 +52,9 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
       method: options.method ?? "GET",
       headers,
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      // API data can change independently of a Next.js deployment (for example,
+      // when an admin publishes a scheme), so never reuse a stale server response.
+      cache: "no-store",
       signal: controller.signal,
     });
   } catch (error) {

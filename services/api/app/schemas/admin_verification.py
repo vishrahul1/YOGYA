@@ -13,14 +13,6 @@ import uuid
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
-class VersionCreateRequest(BaseModel):
-    """Create a new draft scheme version for an academic year (YYYY-YY)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    academic_year: str = Field(pattern=r"^[0-9]{4}-[0-9]{2}$")
-
-
 class SourceCreateRequest(BaseModel):
     """Attach an official government source to a scheme version's scheme."""
 

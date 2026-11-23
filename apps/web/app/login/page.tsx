@@ -2,25 +2,31 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import ErrorMessage from "@/components/ui/ErrorMessage";
 import Input from "@/components/ui/Input";
-import { apiRequest } from "@/lib/api/client";
-import type { ApiMe } from "@/lib/api/types";
+import { useAuth } from "@/lib/auth/session";
 import { isValidEmail } from "@/lib/auth/validation";
 import { getSupabaseClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { session, role, loading } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [emailError, setEmailError] = useState<string | undefined>();
   const [passwordError, setPasswordError] = useState<string | undefined>();
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!loading && session && role) {
+      router.replace(role === "admin" ? "/admin" : "/dashboard");
+    }
+  }, [loading, session, role, router]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -43,8 +49,9 @@ export default function LoginPage() {
         return;
       }
 
-      const me = await apiRequest<ApiMe>("/api/me", { token: data.session.access_token });
-      router.replace(me.role === "admin" ? "/admin" : "/dashboard");
+      // Leave the login route immediately. The dashboard guard will forward an
+      // admin to the admin workspace once AuthProvider resolves the role.
+      router.replace("/dashboard");
     } catch {
       setFormError("Could not sign in right now. Please try again.");
     } finally {

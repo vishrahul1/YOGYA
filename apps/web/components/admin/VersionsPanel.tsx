@@ -2,21 +2,15 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import type { FormEvent } from "react";
-import Button from "@/components/ui/Button";
 import ErrorMessage from "@/components/ui/ErrorMessage";
-import Input from "@/components/ui/Input";
 import Spinner from "@/components/ui/Spinner";
 import VersionCard from "@/components/admin/VersionCard";
 import type { ManagedVersion } from "@/components/admin/VersionCard";
-import { ACADEMIC_YEAR_PATTERN } from "@/components/admin/labels";
-import { ApiError, apiRequest } from "@/lib/api/client";
+import { apiRequest } from "@/lib/api/client";
 import type {
   SchemeSource,
   SchemeSourceListResponse,
   SchemeVersion,
-  SchemeVersionListResponse,
-  VersionCreateRequest,
 } from "@/lib/api/adminTypes";
 import type { SchemeListResponse } from "@/lib/api/types";
 import { useAuth } from "@/lib/auth/session";
@@ -50,10 +44,6 @@ export function VersionsPanel({ schemeId, schemeName }: VersionsPanelProps) {
   const [loadingWorkspace, setLoadingWorkspace] = useState(true);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
 
-  const [academicYear, setAcademicYear] = useState("");
-  const [yearError, setYearError] = useState<string | undefined>(undefined);
-  const [addError, setAddError] = useState<string | null>(null);
-  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -61,8 +51,8 @@ export function VersionsPanel({ schemeId, schemeName }: VersionsPanelProps) {
     setLoadingWorkspace(true);
     setWorkspaceError(null);
     Promise.all([
-      apiRequest<SchemeVersionListResponse>(
-        `/api/admin/schemes/${encodeURIComponent(schemeId)}/versions`,
+      apiRequest<SchemeVersion>(
+        `/api/admin/schemes/${encodeURIComponent(schemeId)}/record`,
         { token },
       ),
       apiRequest<SchemeSourceListResponse>(
@@ -72,11 +62,11 @@ export function VersionsPanel({ schemeId, schemeName }: VersionsPanelProps) {
     ])
       .then(([versionResult, sourceResult]) => {
         if (!active) return;
-        setVersions(versionResult.items.map((version) => ({ id: version.id, version })));
+        setVersions([{ id: versionResult.id, version: versionResult }]);
         setSources(sourceResult.items);
       })
       .catch(() => {
-        if (active) setWorkspaceError("Could not load versions and official sources.");
+        if (active) setWorkspaceError("Could not load the scholarship workspace and official sources.");
       })
       .finally(() => {
         if (active) setLoadingWorkspace(false);
@@ -110,65 +100,17 @@ export function VersionsPanel({ schemeId, schemeName }: VersionsPanelProps) {
     void checkPublicCatalogue(version.id, schemeName);
   }
 
-  async function handleAddVersion(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!token) return;
-    const year = academicYear.trim();
-    if (!ACADEMIC_YEAR_PATTERN.test(year)) {
-      setYearError("Use the academic year format 2025-26.");
-      return;
-    }
-    setYearError(undefined);
-    setAddError(null);
-    const body: VersionCreateRequest = { academic_year: year };
-    setAdding(true);
-    try {
-      const version = await apiRequest<SchemeVersion>(
-        `/api/admin/schemes/${encodeURIComponent(schemeId)}/versions`,
-        { method: "POST", token, body },
-      );
-      setVersions((prev) => [{ id: version.id, version }, ...prev]);
-      setAcademicYear("");
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 409) {
-        setAddError(err.message);
-      } else {
-        setAddError("Could not add the version. Please try again.");
-      }
-    } finally {
-      setAdding(false);
-    }
-  }
-
   return (
     <section aria-labelledby="versions-heading" className="space-y-6">
-      <div>
-        <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-700">Step 2 of 2</p>
-        <h2 id="versions-heading" className="mt-1 text-2xl font-semibold text-slate-950">Review and publish</h2>
-        <p className="mt-2 text-sm text-slate-600">Check the information and source, then move the version through review.</p>
+      <div className="flex flex-col gap-4 border-b border-slate-300 pb-5 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 id="versions-heading" className="text-xl font-semibold text-slate-950">Draft and publish</h2>
+          <p className="mt-1 text-sm text-slate-600">Complete required checks, then publish for students.</p>
+        </div>
       </div>
 
-      {loadingWorkspace ? <Spinner label="Loading versions and sources" /> : null}
+      {loadingWorkspace ? <Spinner label="Loading scholarship workspace" /> : null}
       {workspaceError ? <ErrorMessage message={workspaceError} /> : null}
-
-      <details className="border-b border-slate-200 pb-4" open={!loadingWorkspace && versions.length === 0}>
-        <summary className="cursor-pointer py-2 text-sm font-semibold text-teal-700">+ Add another academic-year version</summary>
-      <form onSubmit={handleAddVersion} noValidate className="mt-3 max-w-md space-y-3" aria-label="Add version">
-        <Input
-          label="New academic year version"
-          name="academic_year"
-          placeholder="2025-26"
-          value={academicYear}
-          onChange={(e) => setAcademicYear(e.target.value)}
-          error={yearError}
-          maxLength={7}
-        />
-        {addError ? <ErrorMessage message={addError} /> : null}
-        <Button type="submit" variant="secondary" disabled={adding || !token}>
-          {adding ? "Adding..." : "Add version as draft"}
-        </Button>
-      </form>
-      </details>
 
       {publication ? (
         <div
@@ -187,10 +129,10 @@ export function VersionsPanel({ schemeId, schemeName }: VersionsPanelProps) {
       ) : null}
 
       {!loadingWorkspace && versions.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-600">No versions yet. Add the first academic-year version above.</p>
+        <p className="border-l-4 border-amber-400 pl-4 text-sm text-slate-600">The scholarship workspace is unavailable.</p>
       ) : (
-        <div className="space-y-4">
-          {versions.map((managed) => (
+        <div>
+          {versions.slice(0, 1).map((managed) => (
             <VersionCard
               key={managed.id}
               managed={managed}

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { FormEvent } from "react";
@@ -19,6 +20,7 @@ export interface SchemeDetailPanelProps {
 }
 
 export default function SchemeDetailPanel({ schemeId }: SchemeDetailPanelProps) {
+  const [editingDetails, setEditingDetails] = useState(false);
   const path = `/api/admin/schemes/${encodeURIComponent(schemeId)}`;
   const { data, error, loading, reload } = useAuthedRequest<AdminScheme>(
     path,
@@ -37,18 +39,32 @@ export default function SchemeDetailPanel({ schemeId }: SchemeDetailPanelProps) 
 
   return (
     <div className="space-y-8">
-      <header className="space-y-2 border-b border-slate-200 pb-6">
-        <h1 className="text-3xl font-bold text-slate-950">{data.name}</h1>
-        <p className="text-sm text-slate-600">
-          Status: {schemeStatusLabel(data.status)} · Slug: {data.slug}
-          {data.issuing_body ? ` · Issuing body: ${data.issuing_body}` : ""}
-        </p>
+      <header className="border-b border-slate-300 pb-6 sm:flex sm:items-start sm:justify-between sm:gap-6">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">{schemeStatusLabel(data.status)}</span>
+            <span className="text-xs font-medium text-slate-500">{data.slug}</span>
+          </div>
+          <h1 className="mt-3 max-w-4xl text-2xl font-semibold leading-tight tracking-tight text-slate-950">{data.name}</h1>
+          {data.issuing_body ? <p className="mt-2 text-sm text-slate-600">{data.issuing_body}</p> : null}
+        </div>
+        <div className="mt-4 flex shrink-0 gap-2 sm:mt-0">
+          <button type="button" onClick={() => setEditingDetails(true)} className="inline-flex min-h-10 items-center rounded-xl border border-slate-300 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">Edit details</button>
+          <Link href="/admin" className="inline-flex min-h-10 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-100">← Back</Link>
+        </div>
       </header>
 
-      <details className="border-b border-slate-200 pb-4">
-        <summary className="cursor-pointer py-2 text-sm font-semibold text-teal-700">Edit scholarship name or authority</summary>
-        <div className="mt-3 max-w-2xl"><SchemeEditForm scheme={data} onSaved={reload} /></div>
-      </details>
+      {editingDetails ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-labelledby="edit-scheme-heading">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="mb-5 flex items-center justify-between gap-4">
+              <h2 id="edit-scheme-heading" className="text-xl font-semibold text-slate-950">Edit scholarship details</h2>
+              <button type="button" onClick={() => setEditingDetails(false)} className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100">Close</button>
+            </div>
+            <SchemeEditForm scheme={data} onSaved={() => { reload(); setEditingDetails(false); }} />
+          </div>
+        </div>
+      ) : null}
 
       <VersionsPanel schemeId={data.id} schemeName={data.name} />
 

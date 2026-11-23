@@ -5,8 +5,9 @@ import type { FormEvent } from "react";
 import Button from "@/components/ui/Button";
 import ErrorMessage from "@/components/ui/ErrorMessage";
 import Input from "@/components/ui/Input";
+import Spinner from "@/components/ui/Spinner";
 import VersionContentEditor from "@/components/admin/VersionContentEditor";
-import { SOURCE_URL_PATTERN, VERSION_STATUS_LABELS, blankToNull } from "@/components/admin/labels";
+import { SOURCE_URL_PATTERN, blankToNull } from "@/components/admin/labels";
 import { formatDate } from "@/lib/scholarships/format";
 import { ApiError, apiRequest } from "@/lib/api/client";
 import type {
@@ -256,15 +257,11 @@ export default function VersionCard({
   }
 
   const heading = managed.version
-    ? `Academic year ${managed.version.academic_year} · Version ${managed.version.version_number}`
-    : `Version ${versionId}`;
-  const statusText = managed.version
-    ? VERSION_STATUS_LABELS[managed.version.status]
-    : "Status not loaded";
+    ? `Academic year ${managed.version.academic_year}`
+    : "Scholarship details";
   const publishedOn = formatDate(managed.version?.published_at ?? null);
   const verifiedOn = formatDate(managed.version?.verified_at ?? null);
-  const progressSteps = ["draft", "in_review", "verified", "published"] as const;
-  const progressIndex = status ? progressSteps.indexOf(status as (typeof progressSteps)[number]) : -1;
+  const isPublished = status === "published";
   const nextActionText = status === "draft"
     ? "Complete the information and verify an official source before submitting."
     : status === "in_review"
@@ -272,35 +269,40 @@ export default function VersionCard({
       : status === "verified"
         ? "Verification is complete. Publish when this version is ready for students."
         : status === "published"
-          ? "This version is live in the student catalogue."
-          : "No action is available for this version.";
+          ? "This scholarship is live in the student catalogue."
+          : "No action is available for this scholarship.";
 
   return (
-    <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <header className="border-b border-slate-200 px-5 py-5 sm:px-6">
+    <article className="border-t border-slate-300 pt-6">
+      <header className="border-b border-slate-200 pb-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-700">Verification workspace</p>
+            <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-700">Scholarship workflow</p>
             <h3 className="mt-1 text-xl font-semibold text-slate-950">{heading}</h3>
           </div>
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">{statusText}</span>
+          <span className={`rounded-full px-3 py-1 text-sm font-semibold ${isPublished ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>
+            {isPublished ? "Published" : "Draft"}
+          </span>
         </div>
-        <ol className="mt-5 grid grid-cols-4 gap-2" aria-label="Verification progress">
-          {progressSteps.map((step, index) => (
-            <li key={step} className={`border-t-2 pt-2 text-xs font-medium ${index <= progressIndex ? "border-teal-600 text-teal-800" : "border-slate-200 text-slate-400"}`}>
-              {VERSION_STATUS_LABELS[step]}
-            </li>
-          ))}
+        <ol className="mt-6 grid grid-cols-2" aria-label="Publishing progress">
+          <li className="relative flex items-center gap-3 border-t-2 border-teal-600 pt-4">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-teal-700 text-sm font-bold text-white">1</span>
+            <span><span className="block text-xs font-bold uppercase tracking-wide text-teal-700">Draft</span><span className="block font-semibold text-slate-950">Complete required checks</span></span>
+          </li>
+          <li className={`flex items-center gap-3 border-t-2 pt-4 ${isPublished ? "border-emerald-600" : "border-slate-200"}`}>
+            <span className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${isPublished ? "bg-emerald-700 text-white" : "bg-slate-200 text-slate-500"}`}>2</span>
+            <span><span className={`block text-xs font-bold uppercase tracking-wide ${isPublished ? "text-emerald-700" : "text-slate-400"}`}>Published</span><span className={`block font-semibold ${isPublished ? "text-emerald-900" : "text-slate-500"}`}>Available to students</span></span>
+          </li>
         </ol>
       </header>
 
-      <div className="space-y-6 px-5 py-6 sm:px-6">
+      <div className="space-y-6 py-6">
       <div className="space-y-1">
         {verifiedOn ? <p className="text-sm text-slate-600">Verified on {verifiedOn}</p> : null}
         {publishedOn ? <p className="text-sm text-slate-600">Published on {publishedOn}</p> : null}
         {managed.version === null ? (
           <p className="text-sm text-amber-800">
-            The status of this version has not been returned yet. Status-dependent actions are hidden
+            The scholarship status has not been returned yet. Status-dependent actions are hidden
             until an action on it returns its status.
           </p>
         ) : null}
@@ -314,7 +316,7 @@ export default function VersionCard({
       ) : null}
 
       {managed.version ? (
-        <details className="group border-y border-slate-200" open={status === "draft"}>
+        <details className="group border-b border-slate-200">
           <summary className="flex cursor-pointer list-none items-center justify-between py-4 font-semibold text-slate-950">
             <span>Scholarship information</span>
             <span className="text-xl font-normal text-slate-400 group-open:rotate-45">+</span>
@@ -323,7 +325,8 @@ export default function VersionCard({
         </details>
       ) : null}
 
-      <section className="rounded-xl bg-slate-50 p-4" aria-label="Next verification action">
+      <section className="border-l-4 border-teal-600 py-1 pl-4" aria-label="Next verification action">
+        <h4 className="mb-1 font-semibold text-slate-950">Next action</h4>
         <p className="mb-3 text-sm text-slate-700">{nextActionText}</p>
       <div className="flex flex-wrap gap-2">
         {canSubmit ? (
@@ -358,8 +361,7 @@ export default function VersionCard({
       {confirmingPublish ? (
         <div role="group" aria-label="Confirm publish" className="space-y-2 rounded-lg border border-slate-300 p-4">
           <p className="text-sm text-slate-800">
-            Publish this version to the public catalogue? The currently published version of this scheme
-            will be retired.
+            Publish this scholarship to the public catalogue?
           </p>
           <div className="flex gap-2">
             <Button onClick={handlePublish} disabled={busy !== null}>
@@ -412,7 +414,7 @@ export default function VersionCard({
         </form>
       ) : null}
 
-      <details className="group border-y border-slate-200" open={status === "draft" || status === "in_review"}>
+      <details className="group border-b border-slate-200">
         <summary className="flex cursor-pointer list-none items-center justify-between py-4 font-semibold text-slate-950">
           <span>Official sources <span className="ml-2 text-xs font-normal text-slate-500">{sources.length} added</span></span>
           <span className="text-xl font-normal text-slate-400 group-open:rotate-45">+</span>
@@ -487,27 +489,36 @@ export default function VersionCard({
         </div>
       </details>
 
-      <div className="space-y-2">
+      <div>
         <Button variant="secondary" onClick={toggleHistory} aria-expanded={historyOpen}>
-          {historyOpen ? "Hide verification history" : "Show verification history"}
+          Verification history
         </Button>
-        {historyOpen && historyError ? <ErrorMessage message={historyError} /> : null}
-        {historyOpen && history !== null ? (
-          history.length === 0 ? (
-            <p className="text-sm text-slate-600">No verification history yet.</p>
-          ) : (
-            <ol className="space-y-2 text-sm text-slate-800">
-              {history.map((item) => (
-                <li key={item.id} className="rounded-lg bg-slate-50 p-3">
-                  <span className="font-medium">{item.action}</span>
-                  {formatDate(item.recorded_at) ? ` · ${formatDate(item.recorded_at)}` : ""}
-                  {item.note ? <p className="text-slate-600">{item.note}</p> : null}
-                </li>
-              ))}
-            </ol>
-          )
-        ) : null}
       </div>
+      {historyOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-labelledby={`history-${versionId}`}>
+          <div className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="mb-5 flex items-center justify-between gap-4">
+              <h4 id={`history-${versionId}`} className="text-xl font-semibold text-slate-950">Verification history</h4>
+              <button type="button" onClick={() => setHistoryOpen(false)} className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100">Close</button>
+            </div>
+            {historyError ? <ErrorMessage message={historyError} /> : null}
+            {history === null && !historyError ? <Spinner label="Loading verification history" /> : null}
+            {history !== null ? (
+              history.length === 0 ? <p className="text-sm text-slate-600">No verification history yet.</p> : (
+                <ol className="space-y-2 text-sm text-slate-800">
+                  {history.map((item) => (
+                    <li key={item.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <span className="font-medium">{item.action}</span>
+                      {formatDate(item.recorded_at) ? ` · ${formatDate(item.recorded_at)}` : ""}
+                      {item.note ? <p className="mt-1 text-slate-600">{item.note}</p> : null}
+                    </li>
+                  ))}
+                </ol>
+              )
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       </section>
       </div>
     </article>

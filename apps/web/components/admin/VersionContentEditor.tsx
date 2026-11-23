@@ -118,8 +118,14 @@ export default function VersionContentEditor({ versionId, status, sources }: { v
 
   return (
     <section className="space-y-6">
-      <p className="text-sm text-slate-600">Dates and requirements must match an official source. Content locks after submission.</p>
       {error ? <ErrorMessage message={error} /> : null}
+      <details className="group border-b border-slate-200">
+        <summary className="flex cursor-pointer list-none items-center justify-between py-4 font-semibold text-slate-950">
+          <span>Dates and benefit details</span>
+          <span className="text-xl font-normal text-slate-400 group-open:rotate-45">+</span>
+        </summary>
+        <div className="space-y-4 pb-5">
+      <p className="text-sm text-slate-600">Dates and details must match an official source. Content locks after submission.</p>
       <div className="grid gap-4 md:grid-cols-2">
         <Input label="Application start date" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} disabled={!editable} />
         <Input label="Application end date" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} disabled={!editable} />
@@ -127,8 +133,10 @@ export default function VersionContentEditor({ versionId, status, sources }: { v
       <label className="block text-sm font-medium text-slate-700">Benefit summary<textarea rows={3} value={benefit} onChange={(e) => setBenefit(e.target.value)} disabled={!editable} className="mt-1 w-full rounded-lg border border-slate-300 p-3" /></label>
       <label className="block text-sm font-medium text-slate-700">Official deadline wording<textarea rows={2} value={deadline} onChange={(e) => setDeadline(e.target.value)} disabled={!editable} className="mt-1 w-full rounded-lg border border-slate-300 p-3" /></label>
       {editable ? <Button onClick={saveDetails} disabled={busy !== null}>{busy === "details" ? "Saving..." : "Save dates and details"}</Button> : null}
+        </div>
+      </details>
 
-      <details className="group border-t border-slate-200 pt-1">
+      <details className="group border-b border-slate-200">
         <summary className="flex cursor-pointer list-none items-center justify-between py-4 font-semibold text-slate-950"><span>Required documents <span className="ml-2 text-xs font-normal text-slate-500">{content.required_documents.length}</span></span><span className="text-xl font-normal text-slate-400 group-open:rotate-45">+</span></summary>
         <div className="space-y-3 pb-2">
         <ul className="space-y-2">{content.required_documents.map((doc) => <li key={doc.id} className="flex items-center justify-between rounded-lg bg-white p-3 text-sm"><span>{doc.document_name} · {doc.document_kind}{doc.is_mandatory ? " · Mandatory" : " · Optional"}</span>{editable ? <button onClick={() => void removeDocument(doc.id)} className="text-red-600">Remove</button> : null}</li>)}</ul>
@@ -136,7 +144,7 @@ export default function VersionContentEditor({ versionId, status, sources }: { v
         </div>
       </details>
 
-      <details className="group border-t border-slate-200 pt-1">
+      <details className="group border-b border-slate-200">
         <summary className="flex cursor-pointer list-none items-center justify-between py-4 font-semibold text-slate-950"><span>Eligibility criteria <span className="ml-2 text-xs font-normal text-slate-500">{content.eligibility_rules.length}</span></span><span className="text-xl font-normal text-slate-400 group-open:rotate-45">+</span></summary>
         <div className="space-y-3 pb-2">
         <p className="text-xs text-slate-500">All criteria are combined deterministically. Comma-separate lists and between values.</p>

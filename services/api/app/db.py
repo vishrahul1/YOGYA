@@ -8,4 +8,7 @@ def get_connection():
 
     Server-side only; service-role credentials must never reach clients.
     """
-    return psycopg.connect(get_settings().database_url)
+    return psycopg.connect(
+        get_settings().database_url,
+        connect_timeout=5,
+    )

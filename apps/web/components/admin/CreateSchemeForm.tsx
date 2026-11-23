@@ -9,7 +9,7 @@ import ErrorMessage from "@/components/ui/ErrorMessage";
 import Input from "@/components/ui/Input";
 import { ACADEMIC_YEAR_PATTERN, SLUG_PATTERN, SOURCE_URL_PATTERN, blankToNull } from "@/components/admin/labels";
 import { ApiError, apiRequest } from "@/lib/api/client";
-import type { AdminScheme, SchemeSource, SchemeVersion, VersionContent } from "@/lib/api/adminTypes";
+import type { AdminScheme, SchemeSource, VersionContent } from "@/lib/api/adminTypes";
 import { useAuth } from "@/lib/auth/session";
 
 const OPERATORS = ["eq", "neq", "lt", "lte", "gt", "gte", "in", "not_in", "between", "is_set"] as const;
@@ -86,33 +86,32 @@ export default function CreateSchemeForm() {
     setPartialScheme(null);
     let scheme: AdminScheme | null = null;
     try {
-      scheme = await apiRequest<AdminScheme>("/api/admin/schemes", {
+      const created = await apiRequest<AdminScheme & { scheme_record_id: string }>("/api/admin/schemes", {
         method: "POST",
         token: session.access_token,
-        body: { slug: slug.trim(), name: name.trim(), issuing_body: authority.trim() },
+        body: { slug: slug.trim(), name: name.trim(), issuing_body: authority.trim(), academic_year: academicYear.trim() },
       });
+      scheme = created;
       setPartialScheme(scheme);
-      const version = await apiRequest<SchemeVersion>(`/api/admin/schemes/${scheme.id}/versions`, {
-        method: "POST", token: session.access_token, body: { academic_year: academicYear.trim() },
-      });
-      const source = await apiRequest<SchemeSource>(`/api/admin/scheme-versions/${version.id}/sources`, {
+      const recordId = created.scheme_record_id;
+      const source = await apiRequest<SchemeSource>(`/api/admin/scheme-versions/${recordId}/sources`, {
         method: "POST", token: session.access_token,
         body: { official_url: sourceUrl.trim(), issuing_authority: authority.trim(), notes: blankToNull(sourceNotes) },
       });
-      await apiRequest<VersionContent>(`/api/admin/scheme-versions/${version.id}/content`, {
+      await apiRequest<VersionContent>(`/api/admin/scheme-versions/${recordId}/content`, {
         method: "PATCH", token: session.access_token,
         body: { benefit_summary: blankToNull(benefit), deadline_text: blankToNull(deadline), application_start_date: startDate || null, application_end_date: endDate || null },
       });
 
       const documentNames = [...new Set(documents.split("\n").map((item) => item.trim()).filter(Boolean))];
       for (const documentName of documentNames) {
-        await apiRequest(`/api/admin/scheme-versions/${version.id}/documents`, {
+        await apiRequest(`/api/admin/scheme-versions/${recordId}/documents`, {
           method: "POST", token: session.access_token,
           body: { document_name: documentName, document_kind: "other", is_mandatory: true, source_id: source.id },
         });
       }
       for (const criterion of criteria.filter((item) => item.attribute.trim())) {
-        await apiRequest(`/api/admin/scheme-versions/${version.id}/eligibility-rules`, {
+        await apiRequest(`/api/admin/scheme-versions/${recordId}/eligibility-rules`, {
           method: "POST", token: session.access_token,
           body: { attribute: criterion.attribute.trim(), operator: criterion.operator, value: criterionValue(criterion), source_id: source.id },
         });
@@ -131,11 +130,11 @@ export default function CreateSchemeForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="mx-auto max-w-4xl" aria-label="Add complete scholarship">
-      <section className="grid gap-4 pb-6 md:grid-cols-2">
+    <form onSubmit={handleSubmit} noValidate className="mx-auto max-w-5xl" aria-label="Add complete scholarship">
+      <section className="grid gap-5 pb-8 md:grid-cols-2">
         <div className="md:col-span-2">
           <h2 className="text-lg font-semibold text-slate-950">Required information</h2>
-          <p className="mt-1 text-sm text-slate-600">Start with these four details. Everything else can be opened only when needed.</p>
+          <p className="mt-1 text-sm text-slate-600">These fields establish the scholarship and its official source.</p>
         </div>
         <Input label="Scholarship name" value={name} onChange={(event) => changeName(event.target.value)} error={errors.name} required />
         <Input label="Issuing authority" value={authority} onChange={(event) => setAuthority(event.target.value)} error={errors.authority} required />

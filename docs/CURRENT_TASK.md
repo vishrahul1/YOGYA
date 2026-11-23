@@ -2,7 +2,7 @@
 
 ## Status update - Vercel Next.js output
 
-- Fixed the Vercel frontend build output mismatch: Vercel production builds now use the standard `.next` directory expected by its Next.js builder, while local production builds continue using `.next-build` to avoid overwriting an active development server's cache.
+- Removed the custom Next.js `distDir` after Vercel still failed to discover the conditional output. All builds now use the standard `.next` directory expected by the Vercel Next.js builder. Do not run a local production build alongside the development server because both use `.next`.
 
 ## Status update - Guest header navigation
 

@@ -148,6 +148,8 @@ def _list_row() -> tuple[Any, ...]:
         "2024-25",
         "Synthetic benefit",
         "Synthetic deadline",
+        None,
+        None,
         "https://example.invalid/synthetic",
         "Synthetic Authority",
         None,

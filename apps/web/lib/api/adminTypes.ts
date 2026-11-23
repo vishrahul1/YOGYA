@@ -70,6 +70,10 @@ export interface SchemeVersion {
   updated_at: string | null;
 }
 
+export interface SchemeVersionListResponse {
+  items: SchemeVersion[];
+}
+
 /** POST /api/admin/schemes/{scheme_id}/versions request. academic_year is YYYY-YY. */
 export interface VersionCreateRequest {
   academic_year: string;
@@ -84,6 +88,36 @@ export interface SchemeSource {
   notes: string | null;
   retrieved_at: string | null;
   verified_at: string | null;
+}
+
+export interface SchemeSourceListResponse {
+  items: SchemeSource[];
+}
+
+export interface AdminRequiredDocument {
+  id: string;
+  document_name: string;
+  document_kind: string;
+  is_mandatory: boolean;
+  source_id: string | null;
+}
+
+export interface AdminEligibilityRule {
+  id: string;
+  rule_json: {
+    root?: { attribute?: string; operator?: string; value?: unknown };
+  };
+  source_id: string;
+  sort_order: number;
+}
+
+export interface VersionContent {
+  benefit_summary: string | null;
+  deadline_text: string | null;
+  application_start_date: string | null;
+  application_end_date: string | null;
+  required_documents: AdminRequiredDocument[];
+  eligibility_rules: AdminEligibilityRule[];
 }
 
 /** POST /api/admin/scheme-versions/{id}/sources request. */

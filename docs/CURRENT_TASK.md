@@ -75,5 +75,30 @@ Backend gaps the UI works around:
 - No route lists a scheme's versions or sources, or reads one version. Admin sees only versions created or entered by ID in the current visit.
 - DELETE /api/student/saved-schemes/{id} returns 204; the shared apiRequest cannot parse it, so components/tracking/trackingApi.ts has a local delete helper. client.ts was not changed.
 - Saved items carry scheme_id only; their catalogue link is resolved from the first 100 published schemes.
+
+## Status update - Home and scholarship UI refresh
+
+CORS update: local development accepts loopback `localhost`/`127.0.0.1` origins on changing ports, while production remains limited to explicit origins. All 8 CORS tests pass and the live port-3001 `/api/me` preflight returns 200.
+
+DONE:
+- Replaced the split admin candidate/name-first UI with one streamlined scholarship form. Only four required fields are initially visible; dates/benefits, documents, eligibility, advanced settings, and publishing guidance use collapsible sections. One save action creates the scheme, first academic-year version, official source, dates, benefits, documents, and deterministic source-backed eligibility criteria, then opens the verification workspace.
+- Polished the admin creation hierarchy with a clear two-step workflow label, required-first layout, progressive disclosure, concise guidance, and a focused save path. Added an audited scholarship danger zone with exact-name confirmation; the API permits permanent deletion only when every version remains a draft and no student application or eligibility activity exists.
+- Simplified the admin verification workspace with a four-stage progress indicator, prominent status and next-action guidance, collapsible scholarship content, nested document/rule sections, a focused official-source area, hidden secondary edit/version controls, and on-demand history. Frontend typecheck, lint, tests, and production build pass.
+- Rebuilt the initial home page with a responsive hero, calls to action, a three-step explanation, and official-portal guidance.
+- Reworked the scholarship catalogue header, search experience, results summary, responsive grid, pagination, and scholarship cards.
+- Reworked scholarship details to show benefit information, overview fields, required documents, eligibility/save actions, and the official source in a responsive two-column layout.
+- Updated the save action to fill its action panel consistently.
+- Frontend verification: typecheck passed, lint passed, 2 tests passed, and the production build passed after clearing the generated `.next` cache.
+- Fixed authenticated navigation so guest links are replaced, not appended, after login; added role-specific destinations, active-page states, and session-aware home actions.
+- Updated the eligibility assistant for natural-language text, optional missing-detail follow-ups, a continue-with-available-details path, and English/Telugu browser voice input.
+- Converted assistant review and follow-ups to one-field-at-a-time chat steps with quick-choice buttons where applicable; removed the duplicate follow-up API request by reusing questions returned by profile extraction.
+- Fixed intermittent unstyled pages by separating Next.js development output (`.next`) from production build output (`.next-build`), preventing builds from invalidating a running dev server's CSS and JavaScript chunks.
+- Redesigned the assistant as a ChatGPT-style conversation workspace with aligned message bubbles, inline review/follow-up controls, automatic scrolling, a sticky composer, language selection, voice input, and contextual result actions.
+- Added authenticated `POST /api/ai/chat`: one guarded AI call now returns a grounded conversational answer plus extracted profile details, using recent history, existing profile data, and verified published-scheme context. Unknown facts are explicitly unavailable, sensitive input is redacted, and eligibility remains deterministic.
+- Added account-scoped assistant conversation history in browser storage. Active chats save automatically and appear in a right-side history drawer, with reopen and delete actions. Scholarship browsing shows the first six published schemes inside the chat and keeps navigation for individual details or the full catalogue.
+- Reworked the shared authenticated layout: the student navigation now uses the name Assistant; a functional bottom-right assistant widget is available across student pages except `/assistant`; the dashboard assistant card was removed; the full assistant uses the available width with history in a right slide-over; and shared/page gutters were reduced so primary pages fill the workspace.
+- Prevented indefinite page loading by bounding initial Supabase session resolution to 10 seconds and API requests to 15 seconds. Removed duplicate stale development servers and verified the current frontend on port 3000 with the API healthy on port 8000.
+- Refined admin operations for the manual-first workflow: added dashboard lifecycle guidance, status counts, filtering/search, clearer manual and official-URL candidate entry, an automation-ready notice, persistent version/source list APIs, and automatic workspace loading across refreshes. Added an audited operator SQL script plus instructions for promoting an existing Supabase Auth user to the single Admin role. Automation remains future work and must enter the same unverified review workflow.
+- Completed the draft version content editor: admins can manage application start/end dates, official deadline wording, benefit summaries, required documents, and source-backed deterministic eligibility criteria before review. Added guarded content/document/rule APIs and applied migration 0009 for ordered application dates. Content becomes read-only after the version leaves draft status.
 Not done (needs a shell): B9 — typecheck, lint, frontend tests, build. Not started: a UI to create a student application (the POST route exists).
 

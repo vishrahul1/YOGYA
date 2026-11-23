@@ -14,10 +14,7 @@ export default function AssistantPage({ searchParams }: AssistantPageProps) {
 
   return (
     <RequireAuth role="student">
-      <section className="space-y-4">
-        <h1 className="text-2xl font-bold text-slate-900">Eligibility assistant</h1>
-        <AssistantChat schemeVersionId={schemeVersionId} />
-      </section>
+      <AssistantChat schemeVersionId={schemeVersionId} />
     </RequireAuth>
   );
 }

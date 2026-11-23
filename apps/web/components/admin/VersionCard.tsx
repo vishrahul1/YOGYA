@@ -3,9 +3,9 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import Button from "@/components/ui/Button";
-import Card from "@/components/ui/Card";
 import ErrorMessage from "@/components/ui/ErrorMessage";
 import Input from "@/components/ui/Input";
+import VersionContentEditor from "@/components/admin/VersionContentEditor";
 import { SOURCE_URL_PATTERN, VERSION_STATUS_LABELS, blankToNull } from "@/components/admin/labels";
 import { formatDate } from "@/lib/scholarships/format";
 import { ApiError, apiRequest } from "@/lib/api/client";
@@ -263,12 +263,39 @@ export default function VersionCard({
     : "Status not loaded";
   const publishedOn = formatDate(managed.version?.published_at ?? null);
   const verifiedOn = formatDate(managed.version?.verified_at ?? null);
+  const progressSteps = ["draft", "in_review", "verified", "published"] as const;
+  const progressIndex = status ? progressSteps.indexOf(status as (typeof progressSteps)[number]) : -1;
+  const nextActionText = status === "draft"
+    ? "Complete the information and verify an official source before submitting."
+    : status === "in_review"
+      ? "Review the evidence, then approve or return the version for corrections."
+      : status === "verified"
+        ? "Verification is complete. Publish when this version is ready for students."
+        : status === "published"
+          ? "This version is live in the student catalogue."
+          : "No action is available for this version.";
 
   return (
-    <Card className="space-y-5">
+    <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <header className="border-b border-slate-200 px-5 py-5 sm:px-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-700">Verification workspace</p>
+            <h3 className="mt-1 text-xl font-semibold text-slate-950">{heading}</h3>
+          </div>
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">{statusText}</span>
+        </div>
+        <ol className="mt-5 grid grid-cols-4 gap-2" aria-label="Verification progress">
+          {progressSteps.map((step, index) => (
+            <li key={step} className={`border-t-2 pt-2 text-xs font-medium ${index <= progressIndex ? "border-teal-600 text-teal-800" : "border-slate-200 text-slate-400"}`}>
+              {VERSION_STATUS_LABELS[step]}
+            </li>
+          ))}
+        </ol>
+      </header>
+
+      <div className="space-y-6 px-5 py-6 sm:px-6">
       <div className="space-y-1">
-        <h3 className="text-lg font-semibold text-slate-900">{heading}</h3>
-        <p className="text-sm text-slate-700">Status: {statusText}</p>
         {verifiedOn ? <p className="text-sm text-slate-600">Verified on {verifiedOn}</p> : null}
         {publishedOn ? <p className="text-sm text-slate-600">Published on {publishedOn}</p> : null}
         {managed.version === null ? (
@@ -286,6 +313,18 @@ export default function VersionCard({
         </p>
       ) : null}
 
+      {managed.version ? (
+        <details className="group border-y border-slate-200" open={status === "draft"}>
+          <summary className="flex cursor-pointer list-none items-center justify-between py-4 font-semibold text-slate-950">
+            <span>Scholarship information</span>
+            <span className="text-xl font-normal text-slate-400 group-open:rotate-45">+</span>
+          </summary>
+          <div className="pb-5"><VersionContentEditor versionId={versionId} status={managed.version.status} sources={sources} /></div>
+        </details>
+      ) : null}
+
+      <section className="rounded-xl bg-slate-50 p-4" aria-label="Next verification action">
+        <p className="mb-3 text-sm text-slate-700">{nextActionText}</p>
       <div className="flex flex-wrap gap-2">
         {canSubmit ? (
           <Button
@@ -373,7 +412,13 @@ export default function VersionCard({
         </form>
       ) : null}
 
-      {canVerifySource && sources.length > 0 ? (
+      <details className="group border-y border-slate-200" open={status === "draft" || status === "in_review"}>
+        <summary className="flex cursor-pointer list-none items-center justify-between py-4 font-semibold text-slate-950">
+          <span>Official sources <span className="ml-2 text-xs font-normal text-slate-500">{sources.length} added</span></span>
+          <span className="text-xl font-normal text-slate-400 group-open:rotate-45">+</span>
+        </summary>
+        <div className="space-y-5 pb-5">
+      {sources.length > 0 ? (
         <div className="space-y-2">
           <h4 className="text-sm font-semibold text-slate-900">Sources on this scheme</h4>
           <ul className="space-y-2">
@@ -382,10 +427,11 @@ export default function VersionCard({
               return (
                 <li key={source.id} className="flex flex-col gap-2 text-sm sm:flex-row sm:items-center sm:justify-between">
                   <span className="break-all text-slate-800">
-                    {source.issuing_authority}: {source.official_url}
+                    {source.issuing_authority}:{" "}
+                    <a href={source.official_url} target="_blank" rel="noreferrer" className="font-medium text-teal-700 underline underline-offset-2">{source.official_url}</a>
                     {verified ? ` (verified ${verified})` : " (not verified)"}
                   </span>
-                  {source.verified_at === null ? (
+                  {canVerifySource && source.verified_at === null ? (
                     <Button
                       variant="secondary"
                       onClick={() => handleVerifySource(source)}
@@ -402,8 +448,9 @@ export default function VersionCard({
       ) : null}
 
       {canAddSource ? (
-        <form onSubmit={handleAddSource} noValidate className="space-y-3" aria-label="Add source">
-          <h4 className="text-sm font-semibold text-slate-900">Add an official source</h4>
+        <details className="border-t border-slate-200 pt-4">
+          <summary className="cursor-pointer text-sm font-semibold text-teal-700">+ Add another official source</summary>
+        <form onSubmit={handleAddSource} noValidate className="mt-4 grid gap-3 md:grid-cols-2" aria-label="Add source">
           <Input
             label="Official source URL"
             name="source_url"
@@ -431,11 +478,14 @@ export default function VersionCard({
             error={sourceErrors.notes}
             maxLength={1000}
           />
-          <Button type="submit" variant="secondary" disabled={busy !== null}>
+          <div className="md:col-span-2"><Button type="submit" variant="secondary" disabled={busy !== null}>
             {busy === "add-source" ? "Adding..." : "Add source"}
-          </Button>
+          </Button></div>
         </form>
+        </details>
       ) : null}
+        </div>
+      </details>
 
       <div className="space-y-2">
         <Button variant="secondary" onClick={toggleHistory} aria-expanded={historyOpen}>
@@ -458,6 +508,8 @@ export default function VersionCard({
           )
         ) : null}
       </div>
-    </Card>
+      </section>
+      </div>
+    </article>
   );
 }

@@ -252,3 +252,75 @@ def get_admin_scheme(scheme_id: uuid.UUID, ctx: AdminUser) -> dict[str, Any]:
     if row is None:
         raise HTTPException(status_code=404, detail="Scheme not found")
     return _item(row)
+
+
+@router.delete("/api/admin/schemes/{scheme_id}")
+def delete_draft_scheme(scheme_id: uuid.UUID, ctx: AdminUser) -> dict[str, bool]:
+    """Permanently delete an unpublished draft and its draft workspace.
+
+    Versions that have entered review, verification, publication, or retirement are
+    retained. Student application/check results also block deletion.
+    """
+    with get_connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT slug, name FROM schemes WHERE id = %s FOR UPDATE",
+            (scheme_id,),
+        )
+        scheme = cur.fetchone()
+        if scheme is None:
+            raise HTTPException(status_code=404, detail="Scheme not found")
+
+        cur.execute(
+            "SELECT status FROM scheme_versions WHERE scheme_id = %s FOR UPDATE",
+            (scheme_id,),
+        )
+        version_statuses = [row[0] for row in cur.fetchall()]
+        if any(item != "draft" for item in version_statuses):
+            raise HTTPException(
+                status_code=409,
+                detail="Only scholarships whose versions are all drafts can be deleted",
+            )
+
+        cur.execute(
+            """
+            SELECT EXISTS (
+                SELECT 1 FROM applications a
+                JOIN scheme_versions v ON v.id = a.scheme_version_id
+                WHERE v.scheme_id = %s
+            ) OR EXISTS (
+                SELECT 1 FROM eligibility_checks e
+                JOIN scheme_versions v ON v.id = e.scheme_version_id
+                WHERE v.scheme_id = %s
+            )
+            """,
+            (scheme_id, scheme_id),
+        )
+        if cur.fetchone()[0]:
+            raise HTTPException(
+                status_code=409,
+                detail="This scholarship has student activity and cannot be deleted",
+            )
+
+        cur.execute(
+            """
+            INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, details)
+            VALUES (
+                (SELECT id FROM users WHERE auth_user_id = %s),
+                'scheme.deleted',
+                'scheme',
+                %s,
+                jsonb_build_object('slug', %s::text, 'name', %s::text)
+            )
+            """,
+            (ctx.auth_user_id, scheme_id, scheme[0], scheme[1]),
+        )
+        cur.execute("DELETE FROM scheme_versions WHERE scheme_id = %s", (scheme_id,))
+        cur.execute(
+            "DELETE FROM source_documents WHERE scheme_source_id IN "
+            "(SELECT id FROM scheme_sources WHERE scheme_id = %s)",
+            (scheme_id,),
+        )
+        cur.execute("DELETE FROM scheme_sources WHERE scheme_id = %s", (scheme_id,))
+        cur.execute("DELETE FROM schemes WHERE id = %s", (scheme_id,))
+
+    return {"deleted": True}

@@ -7,14 +7,14 @@ to the deterministic provider. The API key is never logged.
 
 import json
 import logging
-import os
 from abc import ABC, abstractmethod
 
 import httpx
 
 from app.ai.explain import build_explanation
-from app.ai.extraction import FOLLOWUP_TEMPLATES, extract_profile_deterministic
+from app.ai.extraction import FOLLOWUP_TEMPLATES, REQUIRED_KEYS, extract_profile_deterministic
 from app.ai.redaction import contains_sensitive_id, redact
+from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +37,53 @@ class AIProvider(ABC):
     @abstractmethod
     def explain(self, result: dict, language: str) -> str:
         """Return a grounded explanation string."""
+
+    def chat(
+        self,
+        message: str,
+        language: str,
+        context: dict,
+        existing_profile: dict,
+        history: list[dict],
+    ) -> dict:
+        """Return one grounded conversational turn plus extracted profile details.
+
+        Providers without conversational support get a safe deterministic response.
+        """
+        del history
+        extracted = self.extract_profile(message, language)
+        found = extracted.get("profile", {})
+        profile = {**existing_profile, **found}
+        is_question = "?" in message or any(
+            word in message.lower()
+            for word in ("what", "which", "when", "where", "how", "why", "can i", "am i")
+        )
+        intent = "both" if found and is_question else "profile" if found else "question" if is_question else "unsupported"
+
+        selected = context.get("selected_scheme")
+        schemes = context.get("schemes", [])
+        if selected and is_question:
+            facts = [f"{selected['name']} is for academic year {selected['academic_year']}." ]
+            if selected.get("benefit_summary"):
+                facts.append(str(selected["benefit_summary"]))
+            if selected.get("deadline_text"):
+                facts.append(f"Published deadline information: {selected['deadline_text']}.")
+            reply = " ".join(facts) + " Please confirm the latest details on the official source."
+        elif schemes and is_question:
+            names = ", ".join(str(item["name"]) for item in schemes[:5])
+            reply = f"Published scholarships currently available include {names}. Open a scheme to review its verified details and run a rule-based eligibility check."
+        elif found:
+            labels = ", ".join(key.replace("_", " ") for key in found)
+            reply = f"I found these details in your message: {labels}. You can review them before continuing."
+        else:
+            reply = "I can help with published scholarships, application preparation, and eligibility guidance. Please ask a specific question or share your student details."
+
+        missing = [key for key in REQUIRED_KEYS if key not in profile]
+        followups = [
+            {"key": key, "en": FOLLOWUP_TEMPLATES[key]["en"], "te": FOLLOWUP_TEMPLATES[key]["te"]}
+            for key in missing
+        ]
+        return {"reply": reply, "intent": intent, "profile": profile, "missing": missing, "followup_questions": followups}
 
 
 def _check_language(language: str) -> None:
@@ -134,6 +181,36 @@ class HttpProvider(AIProvider):
             self.last_used_fallback = True
             return self._fallback.explain(result, language)
 
+    def chat(
+        self,
+        message: str,
+        language: str,
+        context: dict,
+        existing_profile: dict,
+        history: list[dict],
+    ) -> dict:
+        _check_language(language)
+        try:
+            result = self._post(
+                "chat",
+                language,
+                {
+                    "message": redact(message),
+                    "context": context,
+                    "profile": existing_profile,
+                    "history": history,
+                },
+            )
+            if not isinstance(result.get("reply"), str) or not isinstance(result.get("profile"), dict):
+                raise RuntimeError("AI provider returned an unexpected shape")
+            self.last_used_fallback = False
+            return result
+        except Exception:
+            logger.warning("AI chat failed; using deterministic fallback")
+            result = self._fallback.chat(message, language, context, existing_profile, history)
+            self.last_used_fallback = True
+            return result
+
 
 def get_provider() -> AIProvider:
     """Select the provider from AI_PROVIDER, AI_API_KEY and AI_BASE_URL.
@@ -141,16 +218,22 @@ def get_provider() -> AIProvider:
     HttpProvider is used only when AI_PROVIDER is "http" and both key and URL
     are set. Otherwise the deterministic provider is returned.
     """
-    provider_name = os.getenv("AI_PROVIDER", "").strip().lower()
-    api_key = os.getenv("AI_API_KEY", "").strip()
-    base_url = os.getenv("AI_BASE_URL", "").strip()
+    settings = get_settings()
+    provider_name = settings.ai_provider.strip().lower()
+    api_key = settings.ai_api_key.strip()
+    base_url = settings.ai_base_url.strip()
     if provider_name == "http" and api_key and base_url:
         return HttpProvider(api_key, base_url)
     if provider_name == "gemini":
-        gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
+        gemini_key = settings.gemini_api_key.strip()
         if gemini_key:
             # Local import: gemini.py imports this module, so a top-level import would be circular.
             from app.ai.gemini import GeminiProvider
 
-            return GeminiProvider(api_key=gemini_key)
+            return GeminiProvider(
+                api_key=gemini_key,
+                model=settings.gemini_model,
+                base_url=settings.gemini_base_url,
+                timeout=settings.gemini_timeout_seconds,
+            )
     return DeterministicProvider()

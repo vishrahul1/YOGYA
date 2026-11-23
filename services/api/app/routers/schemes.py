@@ -22,6 +22,8 @@ _LIST_SELECT = """
            v.academic_year,
            v.benefit_summary,
            v.deadline_text,
+           v.application_start_date,
+           v.application_end_date,
            src.official_url,
            src.issuing_authority,
            v.verified_at,
@@ -45,10 +47,12 @@ def _item(row: tuple[Any, ...]) -> dict[str, Any]:
         "academic_year": row[4],
         "benefit_summary": row[5],
         "deadline_text": row[6],
-        "official_url": row[7],
-        "issuing_authority": row[8],
-        "verified_at": _iso(row[9]),
-        "published_at": _iso(row[10]),
+        "application_start_date": _iso(row[7]),
+        "application_end_date": _iso(row[8]),
+        "official_url": row[9],
+        "issuing_authority": row[10],
+        "verified_at": _iso(row[11]),
+        "published_at": _iso(row[12]),
     }
 
 

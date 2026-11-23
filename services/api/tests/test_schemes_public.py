@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import uuid
 from collections import deque
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 
 import pytest
@@ -93,6 +93,8 @@ def _list_row() -> tuple[Any, ...]:
         "2024-25",
         "Synthetic benefit",
         "Synthetic deadline",
+        date(2024, 1, 1),
+        date(2024, 3, 31),
         OFFICIAL_URL,
         AUTHORITY,
         VERIFIED_AT,

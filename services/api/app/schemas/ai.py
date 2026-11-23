@@ -17,6 +17,8 @@ from app.ai.extraction import REQUIRED_KEYS
 MAX_TEXT_CHARS = 2000
 MAX_MISSING_KEYS = 10
 MAX_KEY_CHARS = 64
+MAX_HISTORY_MESSAGES = 10
+MAX_REPLY_CHARS = 4000
 
 Language = Literal["en", "te"]
 EngineOutcome = Literal["LIKELY_ELIGIBLE", "NOT_ELIGIBLE", "NEED_MORE_INFORMATION", "UNVERIFIED"]
@@ -61,6 +63,34 @@ class FollowUpsRequest(BaseModel):
 
 class FollowUpsResponse(BaseModel):
     questions: list[str]
+    used_fallback: bool
+
+
+class ChatHistoryMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=MAX_TEXT_CHARS)
+
+
+class ChatRequest(BaseModel):
+    """One conversational turn. Eligibility outcomes are never accepted."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    message: str = Field(min_length=1, max_length=MAX_TEXT_CHARS)
+    language: Language = "en"
+    scheme_version_id: uuid.UUID | None = None
+    profile: dict[str, Any] = Field(default_factory=dict)
+    history: list[ChatHistoryMessage] = Field(default_factory=list, max_length=MAX_HISTORY_MESSAGES)
+
+
+class ChatResponse(BaseModel):
+    reply: str = Field(min_length=1, max_length=MAX_REPLY_CHARS)
+    intent: Literal["profile", "question", "both", "unsupported"]
+    profile: dict[str, Any]
+    missing: list[str]
+    followup_questions: list[FollowupQuestion]
     used_fallback: bool
 
 

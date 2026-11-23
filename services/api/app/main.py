@@ -13,11 +13,13 @@ from app.routers.student_tracking import router as student_tracking_router
 
 
 def create_app() -> FastAPI:
+    settings = get_settings()
     app = FastAPI(title="YOGYA API")
     register_error_handlers(app)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=get_settings().allowed_origins_list(),
+        allow_origins=settings.allowed_origins_list(),
+        allow_origin_regex=settings.allowed_origin_regex(),
         allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type"],

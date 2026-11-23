@@ -1,18 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import Button from "@/components/ui/Button";
 import ErrorMessage from "@/components/ui/ErrorMessage";
 import Input from "@/components/ui/Input";
+import Spinner from "@/components/ui/Spinner";
 import VersionCard from "@/components/admin/VersionCard";
 import type { ManagedVersion } from "@/components/admin/VersionCard";
-import { ACADEMIC_YEAR_PATTERN, UUID_PATTERN } from "@/components/admin/labels";
+import { ACADEMIC_YEAR_PATTERN } from "@/components/admin/labels";
 import { ApiError, apiRequest } from "@/lib/api/client";
 import type {
   SchemeSource,
+  SchemeSourceListResponse,
   SchemeVersion,
+  SchemeVersionListResponse,
   VersionCreateRequest,
 } from "@/lib/api/adminTypes";
 import type { SchemeListResponse } from "@/lib/api/types";
@@ -44,14 +47,44 @@ export function VersionsPanel({ schemeId, schemeName }: VersionsPanelProps) {
   const [versions, setVersions] = useState<ManagedVersion[]>([]);
   const [sources, setSources] = useState<SchemeSource[]>([]);
   const [publication, setPublication] = useState<PublicationState | null>(null);
+  const [loadingWorkspace, setLoadingWorkspace] = useState(true);
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
 
   const [academicYear, setAcademicYear] = useState("");
   const [yearError, setYearError] = useState<string | undefined>(undefined);
   const [addError, setAddError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
-  const [manualId, setManualId] = useState("");
-  const [manualError, setManualError] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    if (!token) return;
+    let active = true;
+    setLoadingWorkspace(true);
+    setWorkspaceError(null);
+    Promise.all([
+      apiRequest<SchemeVersionListResponse>(
+        `/api/admin/schemes/${encodeURIComponent(schemeId)}/versions`,
+        { token },
+      ),
+      apiRequest<SchemeSourceListResponse>(
+        `/api/admin/schemes/${encodeURIComponent(schemeId)}/sources`,
+        { token },
+      ),
+    ])
+      .then(([versionResult, sourceResult]) => {
+        if (!active) return;
+        setVersions(versionResult.items.map((version) => ({ id: version.id, version })));
+        setSources(sourceResult.items);
+      })
+      .catch(() => {
+        if (active) setWorkspaceError("Could not load versions and official sources.");
+      })
+      .finally(() => {
+        if (active) setLoadingWorkspace(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [schemeId, token]);
 
   function upsertVersion(version: SchemeVersion): void {
     setVersions((prev) =>
@@ -107,34 +140,20 @@ export function VersionsPanel({ schemeId, schemeName }: VersionsPanelProps) {
     }
   }
 
-  function handleAddById(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const id = manualId.trim();
-    if (!UUID_PATTERN.test(id)) {
-      setManualError("Enter a version ID in the usual UUID format.");
-      return;
-    }
-    if (versions.some((m) => m.id === id)) {
-      setManualError("This version is already listed below.");
-      return;
-    }
-    setManualError(undefined);
-    setVersions((prev) => [{ id, version: null }, ...prev]);
-    setManualId("");
-  }
-
   return (
     <section aria-labelledby="versions-heading" className="space-y-6">
-      <h2 id="versions-heading" className="text-xl font-semibold text-slate-900">
-        Versions and verification
-      </h2>
+      <div>
+        <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-700">Step 2 of 2</p>
+        <h2 id="versions-heading" className="mt-1 text-2xl font-semibold text-slate-950">Review and publish</h2>
+        <p className="mt-2 text-sm text-slate-600">Check the information and source, then move the version through review.</p>
+      </div>
 
-      <p className="text-sm text-slate-600">
-        The backend does not provide a list of versions for a scheme. Only versions created or
-        added by ID in this visit appear below. Refreshing the page clears this list.
-      </p>
+      {loadingWorkspace ? <Spinner label="Loading versions and sources" /> : null}
+      {workspaceError ? <ErrorMessage message={workspaceError} /> : null}
 
-      <form onSubmit={handleAddVersion} noValidate className="space-y-3" aria-label="Add version">
+      <details className="border-b border-slate-200 pb-4" open={!loadingWorkspace && versions.length === 0}>
+        <summary className="cursor-pointer py-2 text-sm font-semibold text-teal-700">+ Add another academic-year version</summary>
+      <form onSubmit={handleAddVersion} noValidate className="mt-3 max-w-md space-y-3" aria-label="Add version">
         <Input
           label="New academic year version"
           name="academic_year"
@@ -149,19 +168,7 @@ export function VersionsPanel({ schemeId, schemeName }: VersionsPanelProps) {
           {adding ? "Adding..." : "Add version as draft"}
         </Button>
       </form>
-
-      <form onSubmit={handleAddById} noValidate className="space-y-3" aria-label="Add existing version by ID">
-        <Input
-          label="Existing version ID"
-          name="version_id"
-          value={manualId}
-          onChange={(e) => setManualId(e.target.value)}
-          error={manualError}
-        />
-        <Button type="submit" variant="secondary">
-          Add version by ID
-        </Button>
-      </form>
+      </details>
 
       {publication ? (
         <div
@@ -179,8 +186,8 @@ export function VersionsPanel({ schemeId, schemeName }: VersionsPanelProps) {
         </div>
       ) : null}
 
-      {versions.length === 0 ? (
-        <p className="text-sm text-slate-600">No versions in this session yet.</p>
+      {!loadingWorkspace && versions.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-600">No versions yet. Add the first academic-year version above.</p>
       ) : (
         <div className="space-y-4">
           {versions.map((managed) => (

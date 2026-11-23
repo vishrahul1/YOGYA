@@ -70,7 +70,13 @@ export default function SaveSchemeButton({ schemeVersionId }: SaveSchemeButtonPr
   return (
     <div className="flex flex-col gap-2">
       <div>
-        <Button type="button" variant="secondary" onClick={handleClick} disabled={busy || loading}>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={handleClick}
+          disabled={busy || loading}
+          className="min-h-11 w-full rounded-xl"
+        >
           {busy ? "Saving..." : "Save"}
         </Button>
       </div>

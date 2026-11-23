@@ -26,10 +26,14 @@ from psycopg.types.json import Jsonb
 from app.auth import AuthContext, require_admin
 from app.db import get_connection
 from app.schemas.admin_verification import (
+    EligibilityCriterionCreate,
     ReasonRequest,
+    RequiredDocumentCreate,
     SourceCreateRequest,
     VersionCreateRequest,
+    VersionContentUpdate,
 )
+from app.eligibility.adapter import adapt_rule_document
 
 router = APIRouter()
 
@@ -155,6 +159,204 @@ def _history(
         """,
         (version_id, action, ctx.auth_user_id, note),
     )
+
+
+def _draft_version(cur: Any, version_id: uuid.UUID) -> tuple[uuid.UUID, str]:
+    scheme_id, current = _lock_version(cur, version_id)
+    _require_status(current, ("draft",), "Version content can only be edited while it is draft")
+    return scheme_id, current
+
+
+def _require_scheme_source(cur: Any, scheme_id: uuid.UUID, source_id: uuid.UUID) -> None:
+    cur.execute("SELECT 1 FROM scheme_sources WHERE id = %s AND scheme_id = %s", (source_id, scheme_id))
+    if cur.fetchone() is None:
+        raise HTTPException(status_code=404, detail="Official source not found for this scheme")
+
+
+@router.get("/api/admin/scheme-versions/{version_id}/content")
+def get_version_content(version_id: uuid.UUID, ctx: AdminUser) -> dict[str, Any]:
+    with get_connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT benefit_summary, deadline_text, application_start_date, application_end_date
+              FROM scheme_versions WHERE id = %s
+            """,
+            (version_id,),
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Scheme version not found")
+        cur.execute(
+            """
+            SELECT id, document_name, document_kind, is_mandatory, source_id
+              FROM scheme_required_documents WHERE scheme_version_id = %s
+             ORDER BY document_name, id
+            """,
+            (version_id,),
+        )
+        documents = cur.fetchall()
+        cur.execute(
+            """
+            SELECT id, rule_json, source_id, sort_order
+              FROM scheme_rules WHERE scheme_version_id = %s
+             ORDER BY sort_order, id
+            """,
+            (version_id,),
+        )
+        rules = cur.fetchall()
+    return {
+        "benefit_summary": row[0],
+        "deadline_text": row[1],
+        "application_start_date": _iso(row[2]),
+        "application_end_date": _iso(row[3]),
+        "required_documents": [
+            {"id": str(item[0]), "document_name": item[1], "document_kind": item[2],
+             "is_mandatory": item[3], "source_id": _uuid_str(item[4])}
+            for item in documents
+        ],
+        "eligibility_rules": [
+            {"id": str(item[0]), "rule_json": item[1], "source_id": str(item[2]), "sort_order": item[3]}
+            for item in rules
+        ],
+    }
+
+
+@router.patch("/api/admin/scheme-versions/{version_id}/content")
+def update_version_content(version_id: uuid.UUID, body: VersionContentUpdate, ctx: AdminUser) -> dict[str, Any]:
+    changes = body.model_dump(exclude_unset=True)
+    allowed = ("benefit_summary", "deadline_text", "application_start_date", "application_end_date")
+    fields = [field for field in allowed if field in changes]
+    if not fields:
+        raise HTTPException(status_code=400, detail="No content fields to update")
+    with get_connection() as conn, conn.cursor() as cur:
+        scheme_id, _ = _draft_version(cur, version_id)
+        assignments = ", ".join(f"{field} = %s" for field in fields)
+        cur.execute(
+            f"UPDATE scheme_versions SET {assignments}, updated_at = now() WHERE id = %s",
+            (*(changes[field] for field in fields), version_id),
+        )
+        _audit(cur, ctx, "scheme_version.content_updated", "scheme_version", version_id,
+               {"scheme_id": str(scheme_id), "fields": fields})
+    return get_version_content(version_id, ctx)
+
+
+@router.post("/api/admin/scheme-versions/{version_id}/documents", status_code=201)
+def add_required_document(version_id: uuid.UUID, body: RequiredDocumentCreate, ctx: AdminUser) -> dict[str, Any]:
+    document_id = uuid.uuid4()
+    with get_connection() as conn, conn.cursor() as cur:
+        scheme_id, _ = _draft_version(cur, version_id)
+        if body.source_id:
+            _require_scheme_source(cur, scheme_id, body.source_id)
+        cur.execute(
+            """
+            INSERT INTO scheme_required_documents
+              (id, scheme_version_id, document_name, document_kind, is_mandatory, source_id)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING id, document_name, document_kind, is_mandatory, source_id
+            """,
+            (document_id, version_id, body.document_name.strip(), body.document_kind.strip(),
+             body.is_mandatory, body.source_id),
+        )
+        row = cur.fetchone()
+        _audit(cur, ctx, "scheme_document.created", "scheme_version", version_id,
+               {"document_id": str(document_id)})
+    return {"id": str(row[0]), "document_name": row[1], "document_kind": row[2],
+            "is_mandatory": row[3], "source_id": _uuid_str(row[4])}
+
+
+@router.delete("/api/admin/scheme-versions/{version_id}/documents/{document_id}")
+def delete_required_document(version_id: uuid.UUID, document_id: uuid.UUID, ctx: AdminUser) -> dict[str, bool]:
+    with get_connection() as conn, conn.cursor() as cur:
+        _draft_version(cur, version_id)
+        cur.execute("DELETE FROM scheme_required_documents WHERE id = %s AND scheme_version_id = %s RETURNING id",
+                    (document_id, version_id))
+        if cur.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Required document not found")
+    return {"deleted": True}
+
+
+@router.post("/api/admin/scheme-versions/{version_id}/eligibility-rules", status_code=201)
+def add_eligibility_criterion(version_id: uuid.UUID, body: EligibilityCriterionCreate, ctx: AdminUser) -> dict[str, Any]:
+    rule_id = uuid.uuid4()
+    with get_connection() as conn, conn.cursor() as cur:
+        scheme_id, _ = _draft_version(cur, version_id)
+        _require_scheme_source(cur, scheme_id, body.source_id)
+        cur.execute("SELECT academic_year FROM scheme_versions WHERE id = %s", (version_id,))
+        academic_year = cur.fetchone()[0]
+        criterion: dict[str, Any] = {
+            "type": "criterion", "attribute": body.attribute, "operator": body.operator,
+            "academic_year": academic_year, "source_reference": str(body.source_id),
+            "unknown_policy": "UNKNOWN",
+        }
+        if body.operator != "is_set":
+            criterion["value"] = body.value
+        rule_json = {"format_version": 1, "academic_year": academic_year, "root": criterion}
+        try:
+            adapt_rule_document(rule_json)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail="Invalid eligibility criterion") from exc
+        cur.execute("SELECT COALESCE(MAX(sort_order), -1) + 1 FROM scheme_rules WHERE scheme_version_id = %s", (version_id,))
+        sort_order = cur.fetchone()[0]
+        cur.execute(
+            """
+            INSERT INTO scheme_rules
+              (id, scheme_version_id, rule_json, rule_format_version, academic_year, source_id, sort_order)
+            VALUES (%s, %s, %s, 1, %s, %s, %s)
+            """,
+            (rule_id, version_id, Jsonb(rule_json), academic_year, body.source_id, sort_order),
+        )
+        _audit(cur, ctx, "scheme_rule.created", "scheme_version", version_id, {"rule_id": str(rule_id)})
+    return {"id": str(rule_id), "rule_json": rule_json, "source_id": str(body.source_id), "sort_order": sort_order}
+
+
+@router.delete("/api/admin/scheme-versions/{version_id}/eligibility-rules/{rule_id}")
+def delete_eligibility_rule(version_id: uuid.UUID, rule_id: uuid.UUID, ctx: AdminUser) -> dict[str, bool]:
+    with get_connection() as conn, conn.cursor() as cur:
+        _draft_version(cur, version_id)
+        cur.execute("DELETE FROM scheme_rules WHERE id = %s AND scheme_version_id = %s RETURNING id", (rule_id, version_id))
+        if cur.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Eligibility rule not found")
+    return {"deleted": True}
+
+
+@router.get("/api/admin/schemes/{scheme_id}/versions")
+def list_scheme_versions(scheme_id: uuid.UUID, ctx: AdminUser) -> dict[str, Any]:
+    """Return every persisted version for an admin scheme workspace."""
+    with get_connection() as conn, conn.cursor() as cur:
+        cur.execute("SELECT 1 FROM schemes WHERE id = %s", (scheme_id,))
+        if cur.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Scheme not found")
+        cur.execute(
+            f"""
+            SELECT {_VERSION_RETURNING}
+              FROM scheme_versions
+             WHERE scheme_id = %s
+             ORDER BY version_number DESC, created_at DESC
+            """,
+            (scheme_id,),
+        )
+        rows = cur.fetchall()
+    return {"items": [_version_item(row) for row in rows]}
+
+
+@router.get("/api/admin/schemes/{scheme_id}/sources")
+def list_scheme_sources(scheme_id: uuid.UUID, ctx: AdminUser) -> dict[str, Any]:
+    """Return official sources already attached to an admin scheme."""
+    with get_connection() as conn, conn.cursor() as cur:
+        cur.execute("SELECT 1 FROM schemes WHERE id = %s", (scheme_id,))
+        if cur.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Scheme not found")
+        cur.execute(
+            f"""
+            SELECT {_SOURCE_RETURNING}
+              FROM scheme_sources
+             WHERE scheme_id = %s
+             ORDER BY retrieved_at DESC, id DESC
+            """,
+            (scheme_id,),
+        )
+        rows = cur.fetchall()
+    return {"items": [_source_item(row) for row in rows]}
 
 
 @router.post(

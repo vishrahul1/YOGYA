@@ -87,8 +87,10 @@ def calls(monkeypatch):
 
 @pytest.fixture
 def clean_env(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql://synthetic:synthetic@localhost/test")
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
     for name in ("AI_PROVIDER", "GEMINI_API_KEY", "AI_API_KEY", "AI_BASE_URL"):
-        monkeypatch.delenv(name, raising=False)
+        monkeypatch.setenv(name, "")
     return monkeypatch
 
 
@@ -193,6 +195,30 @@ def test_followups_non_json_returns_deterministic_questions(calls):
     assert len(questions) >= 1
     assert all(isinstance(q, str) and q.strip() for q in questions)
     assert provider.last_used_fallback is True
+
+
+# ----------------------------------------------------------------------- chat
+
+
+def test_chat_returns_reply_and_profile_in_one_call(calls):
+    calls.response = FakeResponse(
+        200,
+        _gemini_body('{"reply":"The deadline is not available in the verified context.","intent":"both","profile":{"age":19}}'),
+    )
+    provider = _provider()
+    result = provider.chat("I am 19. When is the deadline?", "en", {"schemes": []}, {}, [])
+    assert result["profile"]["age"] == 19
+    assert result["intent"] == "both"
+    assert "not available" in result["reply"]
+    assert len(calls.recorded) == 1
+
+
+def test_chat_invalid_response_uses_safe_fallback(calls):
+    calls.response = FakeResponse(200, _gemini_body("not json"))
+    provider = _provider()
+    result = provider.chat("Which scholarship can I apply for?", "en", {"schemes": []}, {}, [])
+    assert provider.last_used_fallback is True
+    assert result["reply"]
 
 
 # ------------------------------------------------------------------ explanation

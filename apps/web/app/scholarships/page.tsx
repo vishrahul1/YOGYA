@@ -31,9 +31,9 @@ function buildHref(q: string, page: number): string {
 }
 
 const pageLinkClass =
-  "rounded-lg border border-accent-blue px-4 py-2 font-medium text-accent-blue hover:bg-blue-50";
+  "inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 font-semibold text-slate-700 shadow-sm transition hover:border-teal-300 hover:text-teal-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue";
 const pageLinkDisabledClass =
-  "rounded-lg border border-slate-200 px-4 py-2 font-medium text-slate-400";
+  "inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 font-semibold text-slate-400";
 
 export default async function ScholarshipsPage({ searchParams }: ScholarshipsPageProps) {
   const q = (searchParams.q ?? "").trim().slice(0, MAX_QUERY_LENGTH);
@@ -59,28 +59,49 @@ export default async function ScholarshipsPage({ searchParams }: ScholarshipsPag
   const hasPrevious = page > 1;
 
   return (
-    <section className="space-y-6">
-      <header className="space-y-2">
-        <h1 className="text-2xl font-bold text-slate-900">Scholarships</h1>
-        <p className="max-w-2xl text-slate-600">
-          Published scholarship schemes with their official sources. Listing a scheme does not
-          mean you are eligible. Apply only through official government portals.
-        </p>
+    <section className="w-full space-y-8 pb-8">
+      <header className="relative isolate overflow-hidden rounded-3xl bg-gradient-to-br from-teal-800 via-teal-700 to-slate-900 px-6 py-10 text-white sm:px-10 sm:py-12">
+        <div aria-hidden="true" className="absolute -right-16 -top-20 h-64 w-64 rounded-full bg-white/10 blur-3xl" />
+        <div className="relative max-w-3xl">
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-teal-100">Scholarship catalogue</p>
+          <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Find opportunities for your education</h1>
+          <p className="mt-4 max-w-2xl leading-7 text-teal-50/90">
+            Explore published government scholarship schemes, compare key details, and follow their
+            official sources when you are ready to apply.
+          </p>
+        </div>
       </header>
 
-      <form action="/scholarships" method="get" role="search" className="flex flex-wrap items-end gap-3">
-        <div className="min-w-0 flex-1">
-          <Input
-            label="Search by scheme name"
-            name="q"
-            type="search"
-            defaultValue={q}
-            maxLength={MAX_QUERY_LENGTH}
-          />
+      <form
+        action="/scholarships"
+        method="get"
+        role="search"
+        className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"
+      >
+        <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-end">
+          <div className="min-w-0 flex-1">
+            <Input
+              label="Search scholarships"
+              name="q"
+              type="search"
+              placeholder="Try a scheme name or keyword"
+              defaultValue={q}
+              maxLength={MAX_QUERY_LENGTH}
+              className="min-h-11 bg-slate-50"
+            />
+          </div>
+          <Button type="submit" className="min-h-11 rounded-xl bg-teal-700 px-6 hover:bg-teal-800">
+            Search
+          </Button>
         </div>
-        <Button type="submit" variant="secondary">
-          Search
-        </Button>
+        {q ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-600">
+            <span>Showing matches for “{q}”</span>
+            <Link href="/scholarships" className="font-semibold text-teal-700 underline decoration-teal-300 underline-offset-4">
+              Clear search
+            </Link>
+          </div>
+        ) : null}
       </form>
 
       {loadError ? <ErrorMessage message={loadError} /> : null}
@@ -97,17 +118,30 @@ export default async function ScholarshipsPage({ searchParams }: ScholarshipsPag
       ) : null}
 
       {items.length > 0 ? (
-        <ul className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {items.map((item) => (
-            <li key={item.scheme_version_id}>
-              <ScholarshipCard item={item} />
-            </li>
-          ))}
-        </ul>
+        <section aria-labelledby="scholarship-results" className="space-y-5">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 id="scholarship-results" className="text-2xl font-bold tracking-tight text-slate-950">
+                Available scholarships
+              </h2>
+              <p className="mt-1 text-sm text-slate-600">
+                Showing {items.length} {items.length === 1 ? "scheme" : "schemes"} on page {page}
+              </p>
+            </div>
+            <p className="text-sm text-slate-500">Eligibility is checked separately for each scheme.</p>
+          </div>
+          <ul className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+            {items.map((item) => (
+              <li key={item.scheme_version_id}>
+                <ScholarshipCard item={item} />
+              </li>
+            ))}
+          </ul>
+        </section>
       ) : null}
 
       {!loadError && (hasPrevious || hasNext) ? (
-        <nav aria-label="Pagination" className="flex items-center justify-between gap-3">
+        <nav aria-label="Pagination" className="flex items-center justify-between gap-3 border-t border-slate-200 pt-6">
           {hasPrevious ? (
             <Link href={buildHref(q, page - 1)} className={pageLinkClass}>
               Previous
@@ -117,7 +151,7 @@ export default async function ScholarshipsPage({ searchParams }: ScholarshipsPag
               Previous
             </span>
           )}
-          <p className="text-sm text-slate-600">Page {page}</p>
+          <p className="rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-600">Page {page}</p>
           {hasNext ? (
             <Link href={buildHref(q, page + 1)} className={pageLinkClass}>
               Next

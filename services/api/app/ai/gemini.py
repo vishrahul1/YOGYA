@@ -16,7 +16,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.ai.explain import DISCLAIMER, build_explanation
-from app.ai.extraction import extract_profile_deterministic
+from app.ai.extraction import FOLLOWUP_TEMPLATES, REQUIRED_KEYS, extract_profile_deterministic
 from app.ai.provider import AIProvider, DeterministicProvider
 from app.ai.redaction import contains_sensitive_id, redact
 
@@ -33,6 +33,7 @@ VALID_OUTCOMES = frozenset(
 MAX_EXPLANATION_CHARS = 4000
 MAX_FOLLOWUP_CHARS = 300
 MAX_FOLLOWUPS = 10
+MAX_CHAT_REPLY_CHARS = 4000
 
 
 class GeminiExtractionResponse(BaseModel):
@@ -55,6 +56,16 @@ class GeminiFollowupResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     questions: list[str] = Field(min_length=1, max_length=MAX_FOLLOWUPS)
+
+
+class GeminiChatResponse(BaseModel):
+    """Validated combined conversational reply and profile extraction."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    reply: str = Field(min_length=1, max_length=MAX_CHAT_REPLY_CHARS)
+    intent: Literal["profile", "question", "both", "unsupported"]
+    profile: GeminiExtractionResponse = Field(default_factory=GeminiExtractionResponse)
 
 
 class GeminiProvider(AIProvider):
@@ -174,6 +185,70 @@ class GeminiProvider(AIProvider):
         missing = [k for k in base.get("missing", []) if k not in profile]
         followups = [q for q in base.get("followup_questions", [])]
         return {"profile": profile, "missing": missing, "followup_questions": followups}
+
+    def chat(
+        self,
+        message: str,
+        language: str,
+        context: dict,
+        existing_profile: dict,
+        history: list[dict],
+    ) -> dict:
+        self.last_used_fallback = False
+        redacted_message = redact(message)
+        redacted_history = [
+            {"role": item.get("role"), "content": redact(str(item.get("content", "")))}
+            for item in history[-10:]
+        ]
+        if contains_sensitive_id(redacted_message):
+            self.last_used_fallback = True
+            return self._fallback.chat(message, language, context, existing_profile, history)
+
+        prompt = (
+            "You are YOGYA, a concise scholarship guidance assistant for students in Telangana, India. "
+            "Reply in the requested language. Answer scholarship-specific questions ONLY from VERIFIED_CONTEXT below. "
+            "If the context does not contain the answer, clearly say the information is not available and direct the student to the official source. "
+            "Never invent requirements, benefits, deadlines, portal status, or government facts. "
+            "Never claim that the student is eligible or ineligible; eligibility is decided separately by fixed rules. "
+            "You may explain how to use YOGYA, help prepare an application, and ask for missing student details. "
+            "Also extract only details clearly stated in the newest message: age, annual_family_income_inr, "
+            "caste_category (SC/ST/BC/OC/EWS/MINORITY), gender (female/male/other), district, "
+            "course_level (intermediate/undergraduate/postgraduate/other), disability (boolean). Do not guess. "
+            "Return ONLY JSON: {\"reply\": string, \"intent\": \"profile\"|\"question\"|\"both\"|\"unsupported\", \"profile\": object}.\n\n"
+            f"LANGUAGE: {language}\n"
+            f"VERIFIED_CONTEXT: {json.dumps(context, ensure_ascii=False, default=str)}\n"
+            f"EXISTING_PROFILE: {json.dumps(existing_profile, ensure_ascii=False, default=str)}\n"
+            f"RECENT_HISTORY: {json.dumps(redacted_history, ensure_ascii=False)}\n"
+            f"NEW_MESSAGE: {redacted_message}"
+        )
+        raw = self._call(prompt, expect_json=True)
+        if raw is None:
+            self.last_used_fallback = True
+            return self._fallback.chat(message, language, context, existing_profile, history)
+
+        try:
+            parsed = json.loads(raw)
+            validated = GeminiChatResponse.model_validate(parsed)
+        except (ValueError, ValidationError):
+            logger.warning("GeminiProvider: %s", "InvalidChatResponse")
+            self.last_used_fallback = True
+            return self._fallback.chat(message, language, context, existing_profile, history)
+
+        deterministic = extract_profile_deterministic(message, language).get("profile", {})
+        ai_profile = {key: value for key, value in validated.profile.model_dump().items() if value is not None}
+        profile = {**existing_profile, **deterministic, **ai_profile}
+        missing = [key for key in REQUIRED_KEYS if key not in profile]
+        followups = [
+            {"key": key, "en": FOLLOWUP_TEMPLATES[key]["en"], "te": FOLLOWUP_TEMPLATES[key]["te"]}
+            for key in missing
+        ]
+        return {
+            "reply": validated.reply.strip(),
+            "intent": validated.intent,
+            "profile": profile,
+            "missing": missing,
+            "followup_questions": followups,
+        }
 
     def generate_followups(self, missing: list, language: str) -> list:
         self.last_used_fallback = False

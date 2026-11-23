@@ -33,7 +33,12 @@ def _database_url() -> str:
 
 
 def _open_connection() -> psycopg.Connection:
-    return psycopg.connect(_database_url(), connect_timeout=10)
+    try:
+        return psycopg.connect(_database_url(), connect_timeout=10)
+    except psycopg.Error:
+        # psycopg's exception can include the full connection string, including
+        # its password. Replace it with a deliberately credential-free error.
+        raise RuntimeError(f"Database connection failed ({_describe_target()})") from None
 
 
 def _describe_target() -> str:

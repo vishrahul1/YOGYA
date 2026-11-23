@@ -21,6 +21,8 @@ export interface SchemeListItem {
   academic_year: string;
   benefit_summary: string | null;
   deadline_text: string | null;
+  application_start_date: string | null;
+  application_end_date: string | null;
   official_url: string | null;
   issuing_authority: string | null;
   verified_at: string | null;
@@ -146,6 +148,24 @@ export interface AiFollowUpsRequest {
 export interface AiFollowUpsResponse {
   questions: string[];
   used_fallback: boolean;
+}
+
+export interface AiChatHistoryMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface AiChatRequest {
+  message: string;
+  language: AiLanguage;
+  scheme_version_id?: string;
+  profile: Record<string, AttributeValue>;
+  history: AiChatHistoryMessage[];
+}
+
+export interface AiChatResponse extends AiProfileExtractResponse {
+  reply: string;
+  intent: "profile" | "question" | "both" | "unsupported";
 }
 
 /** POST /api/ai/explanations request. The backend computes the outcome itself. */

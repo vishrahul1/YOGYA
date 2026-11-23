@@ -37,6 +37,26 @@ def test_preflight_from_allowed_origin_is_accepted(client: TestClient) -> None:
     assert response.headers.get("access-control-allow-origin") == ALLOWED_ORIGIN
 
 
+@pytest.mark.parametrize(
+    "origin",
+    ["http://localhost:3001", "http://127.0.0.1:3001", "http://localhost:43127"],
+)
+def test_preflight_accepts_loopback_origin_on_any_development_port(
+    client: TestClient, origin: str
+) -> None:
+    response = client.options(
+        "/api/me",
+        headers={
+            "Origin": origin,
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "authorization",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == origin
+
+
 def test_preflight_from_unlisted_origin_is_not_allowed(client: TestClient) -> None:
     response = client.options(
         "/api/schemes",
@@ -64,3 +84,11 @@ def test_allowed_origins_list_parses_and_strips(monkeypatch: pytest.MonkeyPatch)
     settings = Settings()
 
     assert settings.allowed_origins_list() == ["https://a.example", "https://b.example"]
+
+
+def test_production_has_no_loopback_origin_regex(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql://synthetic:synthetic@localhost/test")
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setenv("APP_ENV", "production")
+
+    assert Settings().allowed_origin_regex() is None

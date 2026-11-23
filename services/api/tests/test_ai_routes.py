@@ -88,6 +88,14 @@ class FakeProvider:
         self.calls.append(("explain", result, language))
         return "Synthetic explanation. Final eligibility is confirmed on the official portal."
 
+    def chat(self, message: str, language: str, context: dict, existing_profile: dict, history: list) -> dict:
+        self.calls.append(("chat", {"message": message, "context": context, "profile": existing_profile, "history": history}, language))
+        return {
+            "reply": "The verified context does not include that detail. Check the official source.",
+            "intent": "both",
+            "profile": {**existing_profile, "age": 19},
+        }
+
 
 @pytest.fixture
 def fake_provider(monkeypatch: pytest.MonkeyPatch) -> FakeProvider:
@@ -133,6 +141,7 @@ def _extract_body(**overrides: Any) -> dict:
     [
         ("/api/ai/profile/extract", _extract_body()),
         ("/api/ai/follow-ups", {"missing": ["age"], "language": "en"}),
+        ("/api/ai/chat", {"message": "Am I eligible?", "language": "en"}),
         ("/api/ai/explanations", {"scheme_version_id": str(SCHEME_ID), "profile": {}}),
     ],
 )
@@ -179,6 +188,50 @@ def test_followups_returns_questions(client: TestClient, fake_provider: FakeProv
 def test_followups_rejects_unknown_profile_key(client: TestClient, fake_provider: FakeProvider) -> None:
     r = client.post("/api/ai/follow-ups", json={"missing": ["secret_field"]}, headers=AUTH)
     assert r.status_code == 422
+
+
+# --- Conversational chat ----------------------------------------------------
+
+
+def test_chat_returns_grounded_reply_and_extracted_profile(
+    client: TestClient, fake_provider: FakeProvider, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(ai_routes, "_load_chat_context", lambda _scheme_id: {"schemes": [{"name": "Synthetic Scheme"}]})
+    r = client.post(
+        "/api/ai/chat",
+        json={
+            "message": "I am 19. What documents do I need?",
+            "language": "en",
+            "profile": {"district": "Warangal", "untrusted": "drop me"},
+            "history": [{"role": "user", "content": "Hello"}],
+        },
+        headers=AUTH,
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert data["intent"] == "both"
+    assert data["profile"] == {"district": "Warangal", "age": 19}
+    assert "untrusted" not in data["profile"]
+    assert "official source" in data["reply"]
+    assert any(item["key"] == "annual_family_income_inr" for item in data["followup_questions"])
+
+
+def test_chat_redacts_sensitive_message_and_history(
+    client: TestClient, fake_provider: FakeProvider, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(ai_routes, "_load_chat_context", lambda _scheme_id: {"schemes": []})
+    r = client.post(
+        "/api/ai/chat",
+        json={
+            "message": "My phone is 9876543210",
+            "history": [{"role": "user", "content": "Aadhaar 1234 5678 9012"}],
+        },
+        headers=AUTH,
+    )
+    assert r.status_code == 200
+    _, payload, _ = fake_provider.calls[-1]
+    assert "9876543210" not in payload["message"]
+    assert "1234 5678 9012" not in payload["history"][0]["content"]
 
 
 # --- Explanations (trusted engine outcome) ----------------------------------
@@ -281,10 +334,10 @@ def test_text_over_limit_rejected(client: TestClient, fake_provider: FakeProvide
 
 @pytest.fixture
 def no_ai_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("AI_PROVIDER", raising=False)
-    monkeypatch.delenv("AI_API_KEY", raising=False)
-    monkeypatch.delenv("AI_BASE_URL", raising=False)
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.setenv("AI_PROVIDER", "")
+    monkeypatch.setenv("AI_API_KEY", "")
+    monkeypatch.setenv("AI_BASE_URL", "")
+    monkeypatch.setenv("GEMINI_API_KEY", "")
 
 
 def test_deterministic_fallback_extract_returns_200(client: TestClient, no_ai_env: None) -> None:

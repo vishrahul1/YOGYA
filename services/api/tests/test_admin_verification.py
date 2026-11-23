@@ -147,6 +147,25 @@ def _run(s: FakeState, sql: str, p: tuple[Any, ...]) -> list[tuple[Any, ...]]:
     if sql.startswith("SELECT id FROM schemes WHERE id = %s"):
         return [(p[0],)] if p[0] in s.schemes else []
 
+    if sql.startswith("SELECT 1 FROM schemes WHERE id = %s"):
+        return [(1,)] if p[0] in s.schemes else []
+
+    if sql.startswith("SELECT id, scheme_id, version_number, academic_year, status"):
+        versions = sorted(
+            (v for v in s.versions.values() if v["scheme_id"] == p[0]),
+            key=lambda v: (v["version_number"], v["created_at"]),
+            reverse=True,
+        )
+        return [_version_row(v) for v in versions]
+
+    if sql.startswith("SELECT id, scheme_id, official_url, issuing_authority, notes"):
+        sources = sorted(
+            (source for source in s.sources.values() if source["scheme_id"] == p[0]),
+            key=lambda source: (source["retrieved_at"], source["id"]),
+            reverse=True,
+        )
+        return [_source_row(source) for source in sources]
+
     if sql.startswith("SELECT 1 FROM scheme_versions WHERE scheme_id = %s AND academic_year = %s"):
         taken = any(
             v["scheme_id"] == p[0] and v["academic_year"] == p[1] and v["status"] != "retired"
@@ -405,6 +424,33 @@ def _submit(client: TestClient, version_id: str) -> None:
 
 
 # --- Version creation --------------------------------------------------------
+
+
+def test_admin_workspace_lists_persisted_versions_and_sources(
+    state: FakeState, client: TestClient
+) -> None:
+    version_id = _create_version(client)
+    source_id = _add_source(client, version_id)
+
+    versions = client.get(
+        f"/api/admin/schemes/{SCHEME_ID}/versions", headers=ADMIN_HEADERS
+    )
+    sources = client.get(
+        f"/api/admin/schemes/{SCHEME_ID}/sources", headers=ADMIN_HEADERS
+    )
+
+    assert versions.status_code == 200
+    assert versions.json()["items"][0]["id"] == version_id
+    assert sources.status_code == 200
+    assert sources.json()["items"][0]["id"] == source_id
+
+
+def test_student_cannot_list_admin_workspace(state: FakeState, client: TestClient) -> None:
+    student_headers = _bearer(make_token(STUDENT_AUTH_ID))
+    response = client.get(
+        f"/api/admin/schemes/{SCHEME_ID}/versions", headers=student_headers
+    )
+    assert response.status_code == 403
 
 
 def test_create_draft_version_returns_201_with_draft_status(

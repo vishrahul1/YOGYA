@@ -50,9 +50,12 @@ def test_telugu_text_passes_through_unchanged():
 
 
 def test_get_provider_defaults_to_deterministic(monkeypatch):
-    monkeypatch.delenv("AI_PROVIDER", raising=False)
-    monkeypatch.delenv("AI_API_KEY", raising=False)
-    monkeypatch.delenv("AI_BASE_URL", raising=False)
+    monkeypatch.setenv("DATABASE_URL", "postgresql://synthetic:synthetic@localhost/test")
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setenv("AI_PROVIDER", "")
+    monkeypatch.setenv("AI_API_KEY", "")
+    monkeypatch.setenv("AI_BASE_URL", "")
+    monkeypatch.setenv("GEMINI_API_KEY", "")
     assert isinstance(get_provider(), DeterministicProvider)
 
     monkeypatch.setenv("AI_PROVIDER", "http")

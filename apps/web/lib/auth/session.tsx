@@ -26,6 +26,25 @@ export interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+function withTimeout<T>(promise: Promise<T>, milliseconds: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(
+      () => reject(new Error("Authentication timed out")),
+      milliseconds,
+    );
+    promise.then(
+      (value) => {
+        window.clearTimeout(timeout);
+        resolve(value);
+      },
+      (error: unknown) => {
+        window.clearTimeout(timeout);
+        reject(error);
+      },
+    );
+  });
+}
+
 function normaliseRole(value: string | null): AppRole | null {
   return value === "student" || value === "admin" ? value : null;
 }
@@ -57,8 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    supabase.auth
-      .getSession()
+    withTimeout(supabase.auth.getSession(), 10000)
       .then(({ data }) => {
         if (!active) return;
         setSession(data.session);
